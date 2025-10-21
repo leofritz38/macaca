@@ -1,4 +1,5 @@
-setwd("C:/Users/yangc/Documents/Cours/ASA/projet")
+#setwd("C:/Users/yangc/Documents/Cours/ASA/projet")
+setwd("C:/Users/lylym/git/macaca")
 install.packages("readxl")
 library(readxl)
 macaca_activity=read_xlsx("data_Macaca.xlsx",sheet=2)
@@ -53,8 +54,8 @@ macaca_activity$relative_time=t1
 
 
 # Si multivarié - hypothèse biologique éventuelles?
-
-
+# On pourrait potentiellement partir sur : Is there a link between the time budget 
+# and the food composition ? 
 
 ##### Exploration des données ~ activité :
 #Distribution
@@ -78,7 +79,6 @@ boxplot(macaca_activity$Resting~macaca_activity$Group,label="Resting",ylab="prop
 boxplot(macaca_activity$Social~macaca_activity$Group,label="Social",ylab="proportion social time",xlab="Group")
 
 
-
 #Variabilité des réponses celon les milieux
 
 par(mfrow=c(3,2))
@@ -87,3 +87,66 @@ boxplot(macaca_activity$Moving~macaca_activity$Type_site,label="Moving",ylab="pr
 boxplot(macaca_activity$Foraging~macaca_activity$Type_site,label="Foraging",ylab="proportion foraging time",xlab="type")
 boxplot(macaca_activity$Resting~macaca_activity$Type_site,label="Resting",ylab="proportion resting time",xlab="type")
 boxplot(macaca_activity$Social~macaca_activity$Type_site,label="Social",ylab="proportion social time",xlab="type")
+
+################################# CO INTERTIE ##################################
+## Cointertia test 
+# Création d'une clé unique combinant Type_site, Group, Day, Month et Group_size
+macaca_activity$id_unique <- paste(macaca_activity$Type_site, macaca_activity$Group, macaca_activity$Day,
+                                   macaca_activity$Month,macaca_activity$Group_size,sep = "_")
+
+macaca_food$id_unique <- paste(macaca_food$Type_site, macaca_food$Group, macaca_food$Day,
+                               macaca_food$Month, macaca_food$Group_size, sep = "_")
+
+common_ids <- intersect(macaca_activity$id_unique, macaca_food$id_unique)
+
+macaca_activity_sync <- macaca_activity[macaca_activity$id_unique %in% common_ids, ]
+macaca_food_sync     <- macaca_food[macaca_food$id_unique %in% common_ids, ]
+
+## Cleaning des variables (oui j'aurai pu le faire d'un coup mis j'ai eu la flemme quand j'ai vu que j'avais oublié des colonnes)
+head(macaca_activity_sync)
+macaca_activity_sync <- macaca_activity_sync[, -c(1:5)]
+head(macaca_activity_sync)
+macaca_activity_sync <- macaca_activity_sync[-6]
+head(macaca_activity_sync)
+
+names(macaca_food_sync)
+macaca_food_sync = macaca_food_sync[, -c(1:4, 16)]
+names(macaca_food_sync)
+macaca_food_sync = macaca_food_sync[-11]
+names(macaca_food_sync)
+
+# Vérifie le résultat
+nrow(macaca_activity_sync)
+nrow(macaca_food_sync)
+
+# packages nécessaires (tirés du code de Pannard)
+library(ade4)
+library(vegan)
+library("ggplot2")
+library("factoextra")
+library(corrplot)
+library(RVAideMemoire)
+library("PerformanceAnalytics")
+library(GGally)
+library(MASS)
+
+# Co-inertie entre deux ACP 
+pca1 <- dudi.pca(macaca_activity_sync, scannf = FALSE)   # ACP sur time budget
+pca2 <- dudi.pca(macaca_food_sync,  scannf = FALSE)   # ACP sur food
+coi2 <- coinertia(pca2, pca1, scannf = FALSE, nf = 2)  # co-inertie 
+print(coi2)
+
+# tests et plots
+randtest
+par(mfrow = c(1, 1))
+plot(randtest(coi2), main = "Monte-Carlo test (coinertia PCA/PCA)")
+
+# visualisation
+scatter(coi2)
+plot(coi2)
+MVA.synt(coi2)
+MVA.plot(coi2, "corr", space = 1)  # cercle de corrélations table 1
+MVA.plot(coi2, "corr", space = 2)  # cercle de corrélations table 2
+MVA.plot(coi2, space = 1)
+MVA.plot(coi2, space = 2)
+s.match(coi2$mX, coi2$mY)
