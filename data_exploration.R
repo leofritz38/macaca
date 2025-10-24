@@ -150,3 +150,78 @@ MVA.plot(coi2, "corr", space = 2)  # cercle de corrélations table 2
 MVA.plot(coi2, space = 1)
 MVA.plot(coi2, space = 2)
 s.match(coi2$mX, coi2$mY)
+
+
+
+
+
+
+
+
+#################################
+# Visualisation de la diet par type de site
+#################################
+
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+
+# On garde uniquement les colonnes utiles
+food_data <- macaca_food %>%
+  select(Type_site, Month,
+         Tree_bush_natural, Cereal, Herba_incrop, Herba_notincrop, 
+         Mushroom, Animal, Nut_intree, Cherry_onground, Other_fruit, Cherry_intree)
+
+# Passage en format long (pour ggplot)
+food_long <- melt(food_data, 
+                  id.vars = c("Type_site", "Month"), 
+                  variable.name = "Food_item", 
+                  value.name = "Percentage")
+
+# Moyenne par mois et type de site
+food_summary <- food_long %>%
+  group_by(Type_site, Month, Food_item) %>%
+  summarise(Mean_perc = mean(Percentage, na.rm = TRUE)) %>%
+  ungroup()
+
+# changement des noms pour le graphique
+food_summary$Food_item <- factor(food_summary$Food_item,
+                                 levels = c("Cherry_intree", "Cherry_onground", "Other_fruit", "Cereal", "Nut_intree",
+                                            "Herba_incrop", "Herba_notincrop", "Tree_bush_natural", "Mushroom", "Animal"),
+                                 labels = c("Cherry in tree", "Cherry on ground", "Other fruit", "Wheat", "Walnut",
+                                            "Herbaceous in crops", "Herbaceous in forest", 
+                                            "Forest shrub & tree", "Lichen & mushroom", "Insect"))
+
+
+# On trace le graphique
+ggplot(food_summary, aes(x = factor(Month), y = Mean_perc, fill = Food_item)) +
+  geom_bar(stat = "identity", position = "fill", colour = "black") +
+  facet_wrap(~Type_site, ncol = 2, labeller = labeller(Type_site = c(
+    "Agri" = "Agricultural sites",
+    "Non-agri" = "Natural sites"
+  ))) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Month", y = "Percentage of diet", fill = "Food category") +
+  theme_bw() +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c(
+    "Cherry in tree" = "#b2182b",
+    "Cherry on ground" = "#ef8a62",
+    "Other fruit" = "#fddbc7",
+    "Wheat" = "#f7f7f7",
+    "Walnut" = "#d1e5f0",
+    "Herbaceous in crops" = "#67a9cf",
+    "Herbaceous in forest" = "#1a9641",
+    "Forest shrub & tree" = "#a6d96a",
+    "Lichen & mushroom" = "grey70",
+    "Insect" = "black"
+  )) +
+  labs(x = "Month", y = "Percentage of diet", fill = "Food category") +
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        strip.background = element_rect(fill = "white"),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12),
+        legend.position = "right",
+        legend.title = element_text(size = 11),
+        legend.text = element_text(size = 10))
