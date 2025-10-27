@@ -1,9 +1,32 @@
+# Directionnaries 
+
 #setwd("C:/Users/yangc/Documents/Cours/ASA/projet")
 setwd("C:/Users/lylym/git/macaca")
+
+# Packages 
+
 install.packages("readxl")
 library(readxl)
+
+library(ade4)
+library(vegan)
+library("ggplot2")
+library("factoextra")
+library(corrplot)
+library(RVAideMemoire)
+library("PerformanceAnalytics")
+library(GGally)
+library(MASS)
+
+library(dplyr)
+
+# Data 
+
 macaca_activity=read_xlsx("data_Macaca.xlsx",sheet=2)
 macaca_food=read_xlsx("data_Macaca.xlsx",sheet=3)
+
+# Leo's exploration ------------------------------------------------------------
+
 summary(macaca_food)
 #Mise en forme du tableau pour que les pourcentages de diets ne soient pas considérés comme
 #des chaines de caractère (oui j'aurais pu faire plus simple mais je suis un golem)
@@ -48,9 +71,71 @@ for (i in 1:length(macaca_activity$Day)){
   t1=c(t1,macaca_activity$Day[i]+sum(day_per_months[m0:macaca_activity$Month[i]])-day_per_months[m0])
 }
 macaca_activity$relative_time=t1
+t1
+
+# Tentatives Lyssandre ---------------------------------------------------------
+# On met les données dans l'ordre croissant : 
+macaca_food = macaca_food %>% arrange(macaca_food$relative_time)
+macaca_activity = macaca_activity %>% arrange(macaca_activity$relative_time)
+
+# On regroupe en semaines ? (tentative)
+macaca_food$week <- floor(macaca_food$relative_time / 7)
+# Créer une colonne week qui dit a quelle semaine appartient chaque observation 
+# Ensuite on créer un tableau avec les groupes demaine et la moyenne de chaque groupe
+
+macaca_food_week <- macaca_food %>% group_by(week) %>%
+  summarise( Three_bush_natural = mean(Tree_bush_natural), 
+             Other_fruit = mean(Other_fruit),
+             Cereal = mean(Cereal), 
+             Cherry_intree = mean(Cherry_intree), 
+             Cherry_onground = mean(Cherry_onground), 
+             Mushroom = mean(Mushroom), 
+             Herba_incrop = mean(Herba_incrop), 
+             Herba_notincrop = mean(Herba_notincrop), 
+             Animal = mean(Animal), 
+             Nut_intree= mean(Nut_intree))
+
+macaca_activity$week <- floor(macaca_activity$relative_time / 7)
+macaca_activity_week <- macaca_activity %>% group_by(week) %>% 
+  summarise( Feeding = mean(Feeding), 
+             Moving = mean(Moving), 
+             Foraging = mean(Foraging), 
+             Resting = mean(Resting), 
+             Social = mean(Social))
+
+# Tentative de plot les series temporelles : 
+# On prépare la fenêtre de graphiques : 2 lignes, 1 colonne
+# 5 lignes × 2 colonnes = 10 graphiques
+par(mfrow=c(3,2), mar=c(4,4,2,1), oma=c(2,2,2,2))
+plot(macaca_food_week$week, macaca_food_week$Three_bush_natural, type="b",
+     xlab="Week", ylab="Three_bush_natural", col="forestgreen", pch=16)
+plot(macaca_food_week$week, macaca_food_week$Other_fruit, type="b",
+     xlab="Week", ylab="Other_fruit", col="orange", pch=16)
+plot(macaca_food_week$week, macaca_food_week$Cereal, type="b",
+     xlab="Week", ylab="Other_fruit", col="pink", pch=16)
+plot(macaca_food_week$week, macaca_food_week$Cherry_intree, type="b",
+     xlab="Week", ylab="Other_fruit", col="red", pch=16)
+plot(macaca_food_week$week, macaca_food_week$Cherry_onground, type="b",
+     xlab="Week", ylab="Other_fruit", col="lightblue", pch=16)
+plot(macaca_food_week$week, macaca_food_week$Mushroom, type="b",
+     xlab="Week", ylab="Other_fruit", col="brown", pch=16)
+
+par(mfrow=c(2,2), mar=c(4,4,2,1), oma=c(2,2,2,2))
+plot(macaca_food_week$week, macaca_food_week$Herba_incrop, type="b",
+     xlab="Week", ylab="Other_fruit", col="violet", pch=16)
+plot(macaca_food_week$week, macaca_food_week$Herba_notincrop, type="b",
+     xlab="Week", ylab="Other_fruit", col="green", pch=16)
+plot(macaca_food_week$week, macaca_food_week$Animal, type="b",
+     xlab="Week", ylab="Other_fruit", col="gold", pch=16)
+plot(macaca_food_week$week, macaca_food_week$Nut_intree, type="b",
+     xlab="Week", ylab="Other_fruit", col="cyan", pch=16)
+
+# Faut faire pareil pour activity et ensuite on peut passer sur l'acf (techniquement)
+# ------------------------------------------------------------------------------
+
+
 #Quels questionnements? 
 # Si glm - variables réponses éventuelles, hypothèses biologique derrière
-
 
 
 # Si multivarié - hypothèse biologique éventuelles?
@@ -88,8 +173,8 @@ boxplot(macaca_activity$Foraging~macaca_activity$Type_site,label="Foraging",ylab
 boxplot(macaca_activity$Resting~macaca_activity$Type_site,label="Resting",ylab="proportion resting time",xlab="type")
 boxplot(macaca_activity$Social~macaca_activity$Type_site,label="Social",ylab="proportion social time",xlab="type")
 
-################################# CO INTERTIE ##################################
-## Cointertia test 
+#Lyssandre's exploration : co-intertia test  -----------------------------------
+
 # Création d'une clé unique combinant Type_site, Group, Day, Month et Group_size
 macaca_activity$id_unique <- paste(macaca_activity$Type_site, macaca_activity$Group, macaca_activity$Day,
                                    macaca_activity$Month,macaca_activity$Group_size,sep = "_")
@@ -119,17 +204,6 @@ names(macaca_food_sync)
 nrow(macaca_activity_sync)
 nrow(macaca_food_sync)
 
-# packages nécessaires (tirés du code de Pannard)
-library(ade4)
-library(vegan)
-library("ggplot2")
-library("factoextra")
-library(corrplot)
-library(RVAideMemoire)
-library("PerformanceAnalytics")
-library(GGally)
-library(MASS)
-
 # Co-inertie entre deux ACP 
 pca1 <- dudi.pca(macaca_activity_sync, scannf = FALSE)   # ACP sur time budget
 pca2 <- dudi.pca(macaca_food_sync,  scannf = FALSE)   # ACP sur food
@@ -151,12 +225,11 @@ MVA.plot(coi2, space = 1)
 MVA.plot(coi2, space = 2)
 s.match(coi2$mX, coi2$mY)
 
+# J'ai aucune idée de comment interpréter tout ça (en plus y a pas eu de tri des var)
+# Donc c'est juste le gros bordel de la mort qui tue.
 
 
-
-
-
-
+# Lokian's exploration : diet plot ---------------------------------------------
 
 #################################
 # Visualisation de la diet par type de site
