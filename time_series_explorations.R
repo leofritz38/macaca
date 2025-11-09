@@ -186,9 +186,30 @@ for (col in colnames){
 }
 summary(macaca_activity)
 
-# Regroupement par mois
+# On coupe les données en groupe Agricole et Non-Agricole ----------------------
+agri_activity = macaca_activity[macaca_activity$Type_site=="Agri",]
+non_agri_activity = macaca_activity[macaca_activity$Type_site=="Non_agri",]
+agri_food= macaca_food[macaca_food$Type_site=="Agri",]
+non_agri_food=macaca_food[macaca_food$Type_site=="Non_agri",]
 
-macaca_food_month <- macaca_food %>% 
+# Regroupement par mois pour les agris -----------------------------------------
+agri_food_month <- agri_food %>% 
+  group_by(Month) %>%     
+  summarise(
+    Tree_bush_natural = mean(Tree_bush_natural),
+    Other_fruit       = mean(Other_fruit),
+    Cereal            = mean(Cereal),
+    Cherry_intree     = mean(Cherry_intree),
+    Cherry_onground   = mean(Cherry_onground),
+    Mushroom          = mean(Mushroom),
+    Herba_incrop      = mean(Herba_incrop),
+    Herba_notincrop   = mean(Herba_notincrop),
+    Animal            = mean(Animal),
+    Nut_intree        = mean(Nut_intree)
+  ) %>%
+  arrange(Month)
+
+non_agri_food_month <- non_agri_food %>% 
   group_by(Month) %>%     
   summarise(
     Tree_bush_natural = mean(Tree_bush_natural),
@@ -239,10 +260,11 @@ acf(macaca_food_month$Mushroom, main="Mushroom")
 acf(macaca_food_month$Herba_incrop, main="Herba incrop")              
 acf(macaca_food_month$Herba_notincrop, main="Herba notincrop")        
 acf(macaca_food_month$Animal, main="Animal")                         
-acf(macaca_food_month$Nut_intree, main="Nut intree")                 
+acf(macaca_food_month$Nut_intree, main="Nut intree")   
+
 # Absolument rien 
   
-macaca_activity_month <- macaca_activity %>% group_by(Month) %>% 
+agri_activity_month <- agri_activity %>% group_by(Month) %>% 
     summarise( Feeding = mean(Feeding), 
                Moving = mean(Moving), 
                Foraging = mean(Foraging), 
@@ -251,23 +273,51 @@ macaca_activity_month <- macaca_activity %>% group_by(Month) %>%
   arrange(Month)
 
 par(mfrow=c(3,2), mar=c(4,4,2,1), oma=c(2,2,2,2))
-plot(macaca_activity_month$Month, macaca_activity_month$Feeding, type="b",
+plot(agri_activity_month$Month, agri_activity_month$Feeding, type="b",
      xlab="Week", ylab="Feeding", col="forestgreen", pch=16)
-plot(macaca_activity_month$Month, macaca_activity_month$Moving, type="b",
+plot(agri_activity_month$Month, agri_activity_month$Moving, type="b",
      xlab="Week", ylab="Moving", col="orange", pch=16)
-plot(macaca_activity_month$Month, macaca_activity_month$Foraging, type="b",
+plot(agri_activity_month$Month, agri_activity_month$Foraging, type="b",
      xlab="Week", ylab="Foraging", col="pink", pch=16)
-plot(macaca_activity_month$Month, macaca_activity_month$Resting, type="b",
+plot(agri_activity_month$Month, agri_activity_month$Resting, type="b",
      xlab="Week", ylab="Resting", col="red", pch=16)
-plot(macaca_activity_month$Month, macaca_activity_month$Social, type="b",
+plot(agri_activity_month$Month, agri_activity_month$Social, type="b",
+     xlab="Week", ylab="Social", col="lightblue", pch=16)
+
+non_agri_activity_month <- non_agri_activity %>% group_by(Month) %>% 
+  summarise( Feeding = mean(Feeding), 
+             Moving = mean(Moving), 
+             Foraging = mean(Foraging), 
+             Resting = mean(Resting), 
+             Social = mean(Social)) %>%
+  arrange(Month)
+
+par(mfrow=c(3,2), mar=c(4,4,2,1), oma=c(2,2,2,2))
+plot(non_agri_activity_month$Month, non_agri_activity_month$Feeding, type="b",
+     xlab="Week", ylab="Feeding", col="forestgreen", pch=16)
+plot(non_agri_activity_month$Month, non_agri_activity_month$Moving, type="b",
+     xlab="Week", ylab="Moving", col="orange", pch=16)
+plot(non_agri_activity_month$Month, non_agri_activity_month$Foraging, type="b",
+     xlab="Week", ylab="Foraging", col="pink", pch=16)
+plot(non_agri_activity_month$Month, non_agri_activity_month$Resting, type="b",
+     xlab="Week", ylab="Resting", col="red", pch=16)
+plot(non_agri_activity_month$Month, non_agri_activity_month$Social, type="b",
      xlab="Week", ylab="Social", col="lightblue", pch=16)
 
 # ACF 
 
 # Pour l'activité 
-par(mfrow=c(1,1),  mar=c(4,4,4,1), oma=c(2,2,2,2))
-acf(macaca_activity_month$Feeding, main="Feeding")     
-acf(macaca_activity_month$Moving, main="Moving")      
-acf(macaca_activity_month$Foraging, main="Foraging")  
-acf(macaca_activity_month$Resting, main="Resting")    
-acf(macaca_activity_month$Social, main="Social")       
+par(mfrow=c(3,2), mar=c(4,4,4,1), oma=c(2,2,2,2))
+acf(agri_activity_month$Feeding, main="Feeding")     
+acf(agri_activity_month$Moving, main="Moving")      
+acf(agri_activity_month$Foraging, main="Foraging")  
+acf(agri_activity_month$Resting, main="Resting")    
+acf(agri_activity_month$Social, main="Social")     
+
+par(mfrow=c(3,2), mar=c(4,4,4,1), oma=c(2,2,2,2))
+acf(non_agri_activity_month$Feeding, main="Feeding")     
+acf(non_agri_activity_month$Moving, main="Moving")      
+acf(non_agri_activity_month$Foraging, main="Foraging")  
+acf(non_agri_activity_month$Resting, main="Resting")    
+acf(non_agri_activity_month$Social, main="Social") 
+
