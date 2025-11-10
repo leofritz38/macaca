@@ -149,6 +149,20 @@ head(macaca_food_month)
 nrow(macaca_activity_month)
 nrow(macaca_food_month)
 
+# Corrélation des varaiables ---------------------------------------------------
+
+cor_activity = cor(macaca_activity_month)
+cor_diet = cor(macaca_food_month)
+
+library(corrplot)
+corrplot(cor(macaca_activity_month), method = "color", tl.cex = 0.8)
+corrplot(cor(macaca_food_month), method = "color", tl.cex = 0.8)
+
+# Retire tout ce qui est trop corrélé ------------------------------------------
+
+macaca_food_month = macaca_food_month[, -c(2,5,9)]
+macaca_food_month = macaca_food_month[, -c(2)] # J'avais oublié de retirer les céréales
+
 # Co-inertie entre deux ACP ----------------------------------------------------
 
 pca1 <- dudi.pca(macaca_activity_month, scannf = FALSE)   # ACP sur time budget
