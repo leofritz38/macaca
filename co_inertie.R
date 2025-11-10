@@ -162,7 +162,7 @@ print(coi2)
 # tests et plots
 randtest
 par(mfrow = c(1, 1))
-rt = randtest(coi2)
+rt = randtest(coi2, nrepet = 9999)
 rt
 plot(rt, main = "Monte-Carlo test (coinertia PCA/PCA)")
 
