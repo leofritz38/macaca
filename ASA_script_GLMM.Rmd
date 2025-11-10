@@ -1,0 +1,599 @@
+---
+title: "asa"
+author: "Lokian Le Gal-Audebourg"
+date: "2025-11-10"
+output: html_document
+---
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+```{r init, include=FALSE}
+#Configuration de la session et chargement des packages R
+rm(list=ls()) # Properly clear workspace
+library(knitr)
+opts_chunk$set(echo = FALSE, comment = "", cache = TRUE, fig.align = "center")
+library(ggplot2) # graph package
+library(tinytex) # Pour la sortie pdf
+library(corrplot)# Correlation matrix calculus
+library(plot3D)# For 3D plot
+library(DHARMa)# Model diagnosis
+#library(rcompanion)# Model pseudo R²
+library(lattice)# multipanel graphics
+library(nlme)# Mixed models
+library(predictmeans)#Cook distance in mixed models
+library(readxl)
+library(emmeans)  # pour les tests post-hoc
+```
+
+
+```{r global data,echo=TRUE,include=TRUE}
+# Dataset import
+macaca_activity=read_xlsx("data_Macaca.xlsx",sheet=2)
+macaca_food=read_xlsx("data_Macaca.xlsx",sheet=3)
+# Vérification de la présence de valeurs manquantes
+colSums(is.na(macaca_activity))
+colSums(is.na(macaca_food))
+# Aucune valeur manquante
+
+
+summary(macaca_food)
+#Mise en forme du tableau pour que les pourcentages de diets ne soient pas considérés comme
+#des chaines de caractère (oui j'aurais pu faire plus simple mais je suis un golem)
+macaca_food$Tree_bush_natural=as.numeric(macaca_food$Tree_bush_natural)
+macaca_food$Cereal=as.numeric(macaca_food$Cereal)
+macaca_food$Herba_incrop=as.numeric(macaca_food$Herba_incrop)
+macaca_food$Herba_notincrop=as.numeric(macaca_food$Herba_notincrop)
+macaca_food$Mushroom=as.numeric(macaca_food$Mushroom)
+macaca_food$Animal=as.numeric(macaca_food$Animal)
+macaca_food$Nut_intree=as.numeric(macaca_food$Nut_intree)
+macaca_food$Cherry_onground=as.numeric(macaca_food$Cherry_onground)
+macaca_food$Other_fruit=as.numeric(macaca_food$Other_fruit)
+macaca_food$Cherry_intree=as.numeric(macaca_food$Cherry_intree)
+macaca_food$Type_site=as.factor(macaca_food$Type_site)
+macaca_food$Group=as.factor(macaca_food$Group)
+macaca_food$Month=as.factor(macaca_food$Month)
+summary(macaca_food)
+
+
+macaca_activity$Type_site=as.factor(macaca_activity$Type_site)
+macaca_activity$Group=as.factor(macaca_activity$Group)
+macaca_activity$Month=as.factor(macaca_activity$Month)
+macaca_activity$Feeding=as.numeric(macaca_activity$Feeding)
+macaca_activity$Group_size=as.numeric(macaca_activity$Group_size)
+macaca_activity$Moving=as.numeric(macaca_activity$Moving)
+macaca_activity$Foraging=as.numeric(macaca_activity$Foraging)
+macaca_activity$Resting=as.numeric(macaca_activity$Resting)
+macaca_activity$Social=as.numeric(macaca_activity$Social)
+```
+
+## EXPLORATION DU JEU DE DONNEES
+
+1.  Vérifier la présence des valeurs aberrantes dans $Y$ et la distribution des valeurs de $Y$
+2.  Si $X$ est une variable explicative **quantitative**, vérifier la présence de valeurs aberrantes et la distribution des valeurs de $X$  **OU/ET** Si $X$ est une variable explicative **qualitative**, analyser le nombre de modalités et le nombre d'individus par modalité
+3.  Analyser la relation potentielle entre $Y$ et les $X_{s}$
+4.  Vérifier la présence d'éventuelles interactions entre les $X_{s}$
+5.  Vérifier la présence d'une éventuelle colinéarité entre les $X_{s}$
+
+### Valeurs aberrantes dans $Y$ et distribution des valeurs de $Y$
+
+```{r datahist, include=TRUE, fig.height=5, fig.width=6}
+par(mfrow=c(2,2))
+# Liste des variables à analyser
+variables <- c("Tree_bush_natural", "Other_fruit", "Cereal", "Cherry_intree", 
+               "Cherry_onground", "Mushroom", "Herba_incrop", "Herba_notincrop", 
+               "Animal", "Nut_intree")
+
+# Boucle pour créer les graphiques
+for (var in variables) {
+  par(mfrow=c(2,2))  # 2x2 plots
+  data_vec <- macaca_food[[var]]  # extraire la colonne
+  
+  # Boxplot
+  boxplot(data_vec, col='dodgerblue3', ylab=var)
+  
+  # Cleveland plot
+  dotchart(data_vec, pch=16, col='dodgerblue3', xlab=var)
+  
+  # Histogram
+  hist(data_vec, col='dodgerblue3', xlab=var, main="")
+  
+  # Quantile-Quantile plot
+  qqnorm(data_vec, pch=16, col='dodgerblue3', xlab='')
+  qqline(data_vec, col='red')
+}
+
+```
+
+```{r datahist, include=TRUE, fig.height=5, fig.width=6}
+par(mfrow=c(2,2))
+# Liste des variables à analyser
+variables <- c("Feeding", "Moving", "Foraging", "Resting", "Social")
+
+# Boucle pour créer les graphiques
+for (var in variables) {
+  par(mfrow=c(2,2))  # 2x2 plots
+  data_vec <- macaca_activity[[var]]  # extraire la colonne
+  
+  # Boxplot
+  boxplot(data_vec, col='dodgerblue3', ylab=var)
+  
+  # Cleveland plot
+  dotchart(data_vec, pch=16, col='dodgerblue3', xlab=var)
+  
+  # Histogram
+  hist(data_vec, col='dodgerblue3', xlab=var, main="")
+  
+  # Quantile-Quantile plot
+  qqnorm(data_vec, pch=16, col='dodgerblue3', xlab='')
+  qqline(data_vec, col='red')
+}
+
+```
+
+Enlever other_fruit, cereal, cherry_intree, cherry_onground, Mushroom, Nut_intree car trop de zero, pas distribué normalement
+
+on garde : Tree_bush_natural, Herba_incroop, et Herba_notincroop
+
+et on garde toutes les activités
+
+### Pour chaque variable $X$ quantitative : vérifier la présence de valeurs abérrantes et la distribution de valeurs de X
+
+```{r datahist, include=TRUE, fig.height=5, fig.width=6}
+par(mfrow=c(2,2))
+# Boxplot
+boxplot(macaca_activity$Group_size,col='dodgerblue3')
+# Cleveland plot
+dotchart(macaca_activity$Group_size,pch=16,col='dodgerblue3')
+# Histogram
+hist(macaca_activity$Group_size,col='dodgerblue3')
+# Quantile-Quantile plot
+qqnorm(macaca_activity$Group_size,pch=16,col='dodgerblue3',xlab='')
+qqline(macaca_activity$Group_size,col='red')
+```
+
+```{r datahist, include=TRUE, fig.height=5, fig.width=6}
+par(mfrow=c(2,2))
+# Boxplot
+boxplot(macaca_food$Group_size,col='dodgerblue3')
+# Cleveland plot
+dotchart(macaca_food$Group_size,pch=16,col='dodgerblue3')
+# Histogram
+hist(macaca_food$Group_size,col='dodgerblue3')
+# Quantile-Quantile plot
+qqnorm(macaca_food$Group_size,pch=16,col='dodgerblue3',xlab='')
+qqline(macaca_food$Group_size,col='red')
+```
+
+### Pour chaque $X$ qualitative : analyser le nombre de modalités et le nombre d'individus par modalité
+
+```{r datafact, include=TRUE}
+# Factor site
+summary(macaca_activity$Type_site)
+# Factor month
+summary(macaca_activity$Month)
+
+# Factor site
+summary(macaca_food$Type_site)
+# Factor month
+summary(macaca_food$Month)
+```
+Les classes ont l'air plutôt equilibres
+
+### Analyser la relation potentielle entre Y vs Xs
+
+```{r datagraph, include=TRUE, fig.height=4, fig.width=6}
+
+# Variables comportementales
+variables <- c("Feeding", "Moving", "Foraging", "Resting", "Social")
+
+# Facteurs pour comparaison
+facteurs <- c("Month", "Type_site")
+
+for (var in variables) {
+  data_vec <- macaca_activity[[var]]
+  
+  for (facteur in facteurs) {
+    factor_vec <- macaca_activity[[facteur]]
+    
+    par(mfrow=c(1,2))
+    
+    # Scatter plot si le facteur est numérique
+    if (is.numeric(factor_vec)) {
+      plot(data_vec ~ factor_vec, pch=16, col='dodgerblue3',
+           xlab=facteur, ylab=var, main=paste(var, "vs", facteur))
+    } else { # Boxplot si facteur catégoriel
+      boxplot(data_vec ~ factor_vec, varwidth=TRUE, col='darkgrey',
+              xlab=facteur, ylab=var, main=paste(var, "vs", facteur))
+    }
+  }
+}
+
+```
+
+```{r}
+variables <- c("Feeding", "Moving", "Foraging", "Resting", "Social")
+
+for (var in variables) {
+  data_vec <- macaca_activity[[var]]
+  
+  plot(macaca_activity$Group_size, data_vec,
+       pch=16, col='dodgerblue3',
+       xlab="Group_size", ylab=var,
+       main=paste(var, "vs Group_size"))
+  
+  # Droite de régression
+  model <- lm(data_vec ~ macaca_activity$Group_size)
+  abline(model, col="red", lwd=2)
+  
+}
+
+```
+
+
+```{r datagraph, include=TRUE, fig.height=4, fig.width=6}
+
+# Variables comportementales
+variables <- c("Tree_bush_natural", "Herba_incrop", "Herba_notincrop")
+
+# Facteurs pour comparaison
+facteurs <- c("Month", "Type_site")
+
+for (var in variables) {
+  data_vec <- macaca_food[[var]]
+  
+  for (facteur in facteurs) {
+    factor_vec <- macaca_food[[facteur]]
+    
+    par(mfrow=c(1,2))
+    
+    # Scatter plot si le facteur est numérique
+    if (is.numeric(factor_vec)) {
+      plot(data_vec ~ factor_vec, pch=16, col='dodgerblue3',
+           xlab=facteur, ylab=var, main=paste(var, "vs", facteur))
+    } else { # Boxplot si facteur catégoriel
+      boxplot(data_vec ~ factor_vec, varwidth=TRUE, col='darkgrey',
+              xlab=facteur, ylab=var, main=paste(var, "vs", facteur))
+    }
+  }
+}
+
+```
+
+
+```{r}
+variables <- c("Tree_bush_natural", "Herba_incrop", "Herba_notincrop")
+
+for (var in variables) {
+  data_vec <- macaca_food[[var]]
+  
+  plot(macaca_food$Group_size, data_vec,
+       pch=16, col='dodgerblue3',
+       xlab="Group_size", ylab=var,
+       main=paste(var, "vs Group_size"))
+  
+  # Droite de régression
+  model <- lm(data_vec ~ macaca_food$Group_size)
+  abline(model, col="red", lwd=2)
+}
+
+```
+
+### Analyse des éventuelles interactions entre les $Xs$
+
+
+```{r dataInterFac, include=TRUE, fig.height=4, fig.width=7}
+
+#Factors are crossed (i.e. full crossed factorial design - of course, given the experimental design)
+
+# Interaction activity
+par(mfrow=c(1,1))
+boxplot(macaca_activity$Type_site~macaca_activity$Month*macaca_activity$Type_site, varwidth = TRUE, col='dodgerblue3', main = "")
+
+# Interaction food
+par(mfrow=c(1,1))
+boxplot(macaca_food$Type_site~macaca_food$Month*macaca_food$Type_site, varwidth = TRUE, col='dodgerblue3', main = "")
+
+```
+
+## ANALYSE STATISTIQUE
+
+### Construction du modèle complet
+
+```{r fullmodel,include=TRUE}
+# Model formulation ("Feeding", "Moving", "Foraging", "Resting", "Social")
+
+# Exemple pour l’activité Feeding
+mod1 <- lme(
+  Feeding ~ Month * Type_site + Group_size,  # effets fixes (y compris interaction)
+  random = ~1 | Group,                 # effets aléatoires :  groupe imbriqués
+  data = macaca_activity,
+  na.action = na.exclude
+)
+
+#drop1 function does not work with the nlme package
+```
+
+### Construction comparaison modele moins une variable et modèle complet
+
+```{r}
+
+# Liste des activités ou catégories alimentaires
+variables <- c("Feeding","Moving","Foraging","Resting","Social")
+
+# Effets fixes à tester
+effects <- c("Type_site", "Month", "Group_size", "Month:Type_site")
+
+# Créer un tableau vide
+results_table <- data.frame(
+  Variable = character(),
+  Effect = character(),
+  LR_chi2 = numeric(),
+  Df = numeric(),
+  p_value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Boucle sur chaque variable
+for (var in variables) {
+  
+  # Modèle complet (avec interaction)
+  formula_full <- as.formula(paste(var, "~ Month * Type_site + Group_size"))
+  mod_full <- lme(formula_full, random = ~1 | Group, data = macaca_activity, method="ML")
+  
+  for (effect in effects) {
+    
+    # Créer un modèle réduit sans l’effet testé
+    if (effect == "Type_site") {
+      formula_reduced <- as.formula(paste(var, "~ Month + Group_size"))
+    } else if (effect == "Month") {
+      formula_reduced <- as.formula(paste(var, "~ Type_site + Group_size"))
+    } else if (effect == "Group_size") {
+      formula_reduced <- as.formula(paste(var, "~ Month * Type_site"))
+    } else if (effect == "Month:Type_site") {
+      formula_reduced <- as.formula(paste(var, "~ Month + Type_site + Group_size"))
+    }
+    
+    mod_reduced <- lme(formula_reduced, random = ~1 | Group, data = macaca_activity, method="ML")
+    
+    # Likelihood ratio test
+    lrt <- anova(mod_reduced, mod_full)
+    
+    # Extraire LR χ2, df, p-value
+    lr_chi2 <- lrt$L.Ratio[2]
+    df <- lrt$df[2]
+    p_val <- lrt$`p-value`[2]
+    
+    # Ajouter au tableau
+    results_table <- rbind(results_table, data.frame(
+      Variable = var,
+      Effect = effect,
+      LR_chi2 = round(lr_chi2, 2),
+      Df = df,
+      p_value = ifelse(p_val < 0.001, "<0.001", round(p_val,3))
+    ))
+  }
+}
+
+# Afficher le tableau final
+results_table
+
+
+```
+
+
+
+```{r}
+
+library(nlme)
+library(dplyr)
+
+# Liste des activités ou catégories alimentaires
+variables <- c("Tree_bush_natural", "Herba_incrop", "Herba_notincrop")
+
+# Effets fixes à tester
+effects <- c("Type_site", "Month", "Group_size", "Month:Type_site")
+
+# Créer un tableau vide
+results_table <- data.frame(
+  Variable = character(),
+  Effect = character(),
+  LR_chi2 = numeric(),
+  Df = numeric(),
+  p_value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Boucle sur chaque variable
+for (var in variables) {
+  
+  # Modèle complet (avec interaction)
+  formula_full <- as.formula(paste(var, "~ Month * Type_site + Group_size"))
+  mod_full <- lme(formula_full, random = ~1 | Group, data = macaca_food, method="ML")
+  
+  for (effect in effects) {
+    
+    # Créer un modèle réduit sans l’effet testé
+    if (effect == "Type_site") {
+      formula_reduced <- as.formula(paste(var, "~ Month + Group_size"))
+    } else if (effect == "Month") {
+      formula_reduced <- as.formula(paste(var, "~ Type_site + Group_size"))
+    } else if (effect == "Group_size") {
+      formula_reduced <- as.formula(paste(var, "~ Month * Type_site"))
+    } else if (effect == "Month:Type_site") {
+      formula_reduced <- as.formula(paste(var, "~ Month + Type_site + Group_size"))
+    }
+    
+    mod_reduced <- lme(formula_reduced, random = ~1 | Group, data = macaca_food, method="ML")
+    
+    # Likelihood ratio test
+    lrt <- anova(mod_reduced, mod_full)
+    
+    # Extraire LR χ2, df, p-value
+    lr_chi2 <- lrt$L.Ratio[2]
+    df <- lrt$df[2]
+    p_val <- lrt$`p-value`[2]
+    
+    # Ajouter au tableau
+    results_table <- rbind(results_table, data.frame(
+      Variable = var,
+      Effect = effect,
+      LR_chi2 = round(lr_chi2, 2),
+      Df = df,
+      p_value = ifelse(p_val < 0.001, "<0.001", round(p_val,3))
+    ))
+  }
+}
+
+# Afficher le tableau final
+results_table
+
+
+```
+
+## VALIDATION DE LA MODELISATION
+
+Les conditions d'applications du modèle linéaire général mixte sont les mêmes que le modèle linéaire général (i.e. regression, ANOVA, ANCOVA) excepté l'*indépendance des résidus*. On doit ainsi vérifier la *normalité des résidus* et *l'homogénéité de la variance* et la présence d'unités statistiques influentes (i.e. des observations ayant une contribution importante à la construction du modèle).
+
+```{r}
+
+variables_activity <- c("Feeding","Moving","Foraging","Resting","Social")
+results_list_activity <- list()  # liste vide pour stocker les modèles
+
+for (var in variables_activity) {
+  formula_full <- as.formula(paste(var, "~ Month * Type_site + Group_size"))
+  mod_full <- lme(formula_full, random = ~1 | Group, data = macaca_activity, method="ML")
+  
+  results_list_activity[[var]] <- list(model_full = mod_full)
+}
+
+```
+
+```{r}
+variables_food <- c("Tree_bush_natural","Herba_incrop","Herba_notincrop")
+results_list_food <- list()  # liste vide pour stocker les modèles
+
+for (var in variables_food) {
+  formula_full <- as.formula(paste(var, "~ Month * Type_site + Group_size"))
+  mod_full <- lme(formula_full, random = ~1 | Group, data = macaca_food, method="ML")
+  
+  results_list_food[[var]] <- list(model_full = mod_full)
+}
+
+```
+
+
+```{r}
+
+
+# Modèles et validation pour Activity
+
+
+variables_activity <- c("Feeding","Moving","Foraging","Resting","Social")
+results_list_activity <- list()
+
+# Création des modèles complets
+for (var in variables_activity) {
+  formula_full <- as.formula(paste(var, "~ Month * Type_site + Group_size"))
+  mod_full <- lme(formula_full, random = ~1 | Group, data = macaca_activity, method="ML")
+  results_list_activity[[var]] <- list(model_full = mod_full)
+}
+
+# Validation des modèles
+for (act in names(results_list_activity)) {
+  mod <- results_list_activity[[act]]$model_full
+  cat("\n====================\n")
+  cat("Validation du modèle pour l'activité :", act, "\n")
+  
+  # ---- Normalité des résidus ----
+  par(mfrow=c(1,2))
+  hist(residuals(mod), col='dodgerblue3', xlab="Résidus", main=paste("Histogramme -", act))
+  qqnorm(residuals(mod), pch=16, col='dodgerblue3', main=paste("QQ-plot -", act))
+  qqline(residuals(mod), col='red')
+  
+  # ---- Homogénéité de la variance ----
+  par(mfrow=c(1,3))
+  plot(residuals(mod) ~ fitted(mod),
+       col='dodgerblue3', pch=16,
+       main=paste("Résidus vs fitted -", act),
+       xlab="Valeurs ajustées", ylab="Résidus")
+  abline(h=0, col='red')
+  
+  boxplot(residuals(mod) ~ mod$data$Type_site,
+          varwidth=TRUE, ylab="Résidus",
+          main=paste("Résidus vs Type_site -", act))
+  abline(h=0, col='red')
+  
+  boxplot(residuals(mod) ~ mod$data$Month,
+          varwidth=TRUE, ylab="Résidus",
+          main=paste("Résidus vs Month -", act))
+  abline(h=0, col='red')
+  
+  # ---- Cook's distance ----
+  par(mfrow=c(1,1))
+  A <- CookD(mod, newwd=TRUE)  # ta fonction CookD
+  plot(A, main=paste("Cook's distance -", act))
+  abline(h = 4/length(A), col="red", lty=2)
+}
+
+
+
+```
+
+```{r}
+
+# Modèles et validation pour Food
+
+
+variables_food <- c("Tree_bush_natural","Herba_incrop","Herba_notincrop")
+results_list_food <- list()
+
+# Création des modèles complets
+for (var in variables_food) {
+  formula_full <- as.formula(paste(var, "~ Month * Type_site + Group_size"))
+  mod_full <- lme(formula_full, random = ~1 | Group, data = macaca_food, method="ML")
+  results_list_food[[var]] <- list(model_full = mod_full)
+}
+
+# Validation des modèles
+for (food in names(results_list_food)) {
+  mod <- results_list_food[[food]]$model_full
+  cat("\n====================\n")
+  cat("Validation du modèle pour la catégorie alimentaire :", food, "\n")
+  
+  # ---- Normalité des résidus ----
+  par(mfrow=c(1,2))
+  hist(residuals(mod), col='dodgerblue3', xlab="Résidus", main=paste("Histogramme -", food))
+  qqnorm(residuals(mod), pch=16, col='dodgerblue3', main=paste("QQ-plot -", food))
+  qqline(residuals(mod), col='red')
+  
+  # ---- Homogénéité de la variance ----
+  par(mfrow=c(1,3))
+  plot(residuals(mod) ~ fitted(mod),
+       col='dodgerblue3', pch=16,
+       main=paste("Résidus vs fitted -", food),
+       xlab="Valeurs ajustées", ylab="Résidus")
+  abline(h=0, col='red')
+  
+  boxplot(residuals(mod) ~ mod$data$Type_site,
+          varwidth=TRUE, ylab="Résidus",
+          main=paste("Résidus vs Type_site -", food))
+  abline(h=0, col='red')
+  
+  boxplot(residuals(mod) ~ mod$data$Month,
+          varwidth=TRUE, ylab="Résidus",
+          main=paste("Résidus vs Month -", food))
+  abline(h=0, col='red')
+  
+  # ---- Cook's distance ----
+  par(mfrow=c(1,1))
+  A <- CookD(mod, newwd=TRUE)
+  plot(A, main=paste("Cook's distance -", food))
+  abline(h = 4/length(A), col="red", lty=2)
+}
+
+```
+
