@@ -30,6 +30,8 @@ library(emmeans)  # pour les tests post-hoc
 ```
 
 
+importation des données, et transformation des variables qui était en chaîne de caractères
+
 ```{r global data,echo=TRUE,include=TRUE}
 # Dataset import
 macaca_activity=read_xlsx("data_Macaca.xlsx",sheet=2)
@@ -41,33 +43,30 @@ colSums(is.na(macaca_food))
 
 
 summary(macaca_food)
+summary(macaca_activity)
 #Mise en forme du tableau pour que les pourcentages de diets ne soient pas considérés comme
 #des chaines de caractère (oui j'aurais pu faire plus simple mais je suis un golem)
-macaca_food$Tree_bush_natural=as.numeric(macaca_food$Tree_bush_natural)
-macaca_food$Cereal=as.numeric(macaca_food$Cereal)
-macaca_food$Herba_incrop=as.numeric(macaca_food$Herba_incrop)
-macaca_food$Herba_notincrop=as.numeric(macaca_food$Herba_notincrop)
-macaca_food$Mushroom=as.numeric(macaca_food$Mushroom)
-macaca_food$Animal=as.numeric(macaca_food$Animal)
-macaca_food$Nut_intree=as.numeric(macaca_food$Nut_intree)
-macaca_food$Cherry_onground=as.numeric(macaca_food$Cherry_onground)
-macaca_food$Other_fruit=as.numeric(macaca_food$Other_fruit)
-macaca_food$Cherry_intree=as.numeric(macaca_food$Cherry_intree)
-macaca_food$Type_site=as.factor(macaca_food$Type_site)
-macaca_food$Group=as.factor(macaca_food$Group)
-macaca_food$Month=as.factor(macaca_food$Month)
+# Conversion des variables du data frame macaca_food
+num_vars_food <- c("Tree_bush_natural", "Cereal", "Herba_incrop", "Herba_notincrop",
+                   "Mushroom", "Animal", "Nut_intree", "Cherry_onground",
+                   "Other_fruit", "Cherry_intree")
+
+fact_vars_food <- c("Type_site", "Group", "Month")
+
+macaca_food[num_vars_food] <- lapply(macaca_food[num_vars_food], as.numeric)
+macaca_food[fact_vars_food] <- lapply(macaca_food[fact_vars_food], as.factor)
+
 summary(macaca_food)
 
+# Conversion des variables du data frame macaca_activity
+num_vars_activity <- c("Feeding", "Group_size", "Moving", "Foraging", "Resting", "Social")
+fact_vars_activity <- c("Type_site", "Group", "Month")
 
-macaca_activity$Type_site=as.factor(macaca_activity$Type_site)
-macaca_activity$Group=as.factor(macaca_activity$Group)
-macaca_activity$Month=as.factor(macaca_activity$Month)
-macaca_activity$Feeding=as.numeric(macaca_activity$Feeding)
-macaca_activity$Group_size=as.numeric(macaca_activity$Group_size)
-macaca_activity$Moving=as.numeric(macaca_activity$Moving)
-macaca_activity$Foraging=as.numeric(macaca_activity$Foraging)
-macaca_activity$Resting=as.numeric(macaca_activity$Resting)
-macaca_activity$Social=as.numeric(macaca_activity$Social)
+macaca_activity[num_vars_activity] <- lapply(macaca_activity[num_vars_activity], as.numeric)
+macaca_activity[fact_vars_activity] <- lapply(macaca_activity[fact_vars_activity], as.factor)
+
+summary(macaca_activity)
+
 ```
 
 ## EXPLORATION DU JEU DE DONNEES
@@ -134,7 +133,7 @@ for (var in variables) {
 
 ```
 
-Enlever other_fruit, cereal, cherry_intree, cherry_onground, Mushroom, Nut_intree car trop de zero, pas distribué normalement
+On décide d'enlever other_fruit, cereal, cherry_intree, cherry_onground, Mushroom, Nut_intree car trop de zero, pas distribué normalement
 
 on garde : Tree_bush_natural, Herba_incroop, et Herba_notincroop
 
@@ -167,6 +166,8 @@ hist(macaca_food$Group_size,col='dodgerblue3')
 qqnorm(macaca_food$Group_size,pch=16,col='dodgerblue3',xlab='')
 qqline(macaca_food$Group_size,col='red')
 ```
+
+Pas particulièrement de valeurs aberrantes observés ici
 
 ### Pour chaque $X$ qualitative : analyser le nombre de modalités et le nombre d'individus par modalité
 
