@@ -1,0 +1,341 @@
+---
+title: "ASA_Project_Macaca"
+author: "Chloé Degradi, Marie Féret, Léo Fritz, Lokian Le-Gal Augebourg, Lyssandre
+  Marchand"
+date: "2025-11-12"
+output: html_document
+---
+
+## ASA Project : Macaca
+
+```{r - Packages installation and importation, include=FALSE}
+install.packages("readxl")
+library(readxl)
+library(ade4)
+library(vegan)
+library("ggplot2")
+library("factoextra")
+library(corrplot)
+library(RVAideMemoire)
+library("PerformanceAnalytics")
+library(GGally)
+library(MASS)
+library(dplyr)
+```
+
+### Data presentation
+
+This dataset describes the **time budget** and **diet composition** of several groups of Barbary macaques (*Macaca sylvanus*) living in the Middle Atlas Mountains of Morocco. Different groups of macaques exposed to contrasting degrees of anthropogenic resources, where studied. Groups D, H and F live at the interface between forested areas and agricultural land, therefore they have access to both natural and human-derived food sources. As opposed, groups A and T inhabit exclusively forested areas with no access to cultivated crops or anthropogenic foods, they rely solely on natural forest resources.
+
+All groups were monitored during the **same year**, ensuring that differences in behaviour and diet reflect habitat context rather than seasonal or interannual variation.
+
+```{r - Data importation, include=FALSE}
+
+macaca_time_budget=read_xlsx("data_Macaca.xlsx",sheet=2)
+macaca_diet=read_xlsx("data_Macaca.xlsx",sheet=3)
+
+# Characters into numerical values 
+
+
+summary(macaca_time_budget)
+names(macaca_time_budget)
+colnames = c("Feeding", "Moving", "Foraging", "Resting", "Social")
+
+for (col in colnames) {
+  macaca_time_budget[[col]] = as.numeric(macaca_time_budget[[col]])
+}
+summary(macaca_time_budget)
+
+summary(macaca_diet)
+names(macaca_diet)
+colnames = c(
+  "Tree_bush_natural",
+  "Other_fruit",
+  "Cereal",
+  "Cherry_intree" ,
+  "Cherry_onground",
+  "Mushroom" ,
+  "Herba_incrop",
+  "Herba_notincrop" ,
+  "Animal" ,
+  "Nut_intree"
+)
+for (col in colnames) {
+  macaca_diet[[col]] = as.numeric(macaca_diet[[col]])
+}
+summary(macaca_diet)
+
+```
+
+### **Variables and data structure**
+
+#### **1. Time budget variables**
+
+For each group, the dataset reports the **percentage of time spent (over 24 hours)** in major behavioural categories:
+
+-   **Feeding** : consuming food items
+
+-   **Moving** : travelling or locomotion
+
+-   **Foraging** : searching for food
+
+-   **Resting** : inactivity or sleep
+
+-   **Social** : grooming, playing, or other social interactions
+
+```{r - Time_budget variables visualisation, echo=FALSE}
+head(macaca_time_budget)
+```
+
+#### **2. Diet composition variables**
+
+Diet composition is expressed as the **percentage of food items consumed** per category.
+
+-   **Tree_bush_natural :** Food from forest trees or shrubs (leaves, bark, seeds, wild fruits)
+
+-   **Other_fruit** : Cultivated fruits other than cherries and nuts
+
+-   **Cereal :** Cereal crops from agricultural fields
+
+-   **Cherry_intree :** Cherries taken directly from trees in orchards
+
+-   **Cherry_onground :** Cherries collected from the ground after harvest
+
+-   **Mushroom :** Mushrooms, naturally available in forest habitats
+
+-   **Herba_incrop :** Herbaceous plants growing within cultivated fields (non-cereal weeds)
+
+-   **Herba_notincrop :** Wild herbaceous plants growing in forest areas
+
+-   **Animal :** Small invertebrates, mainly insects
+
+-   **Nut_intree :** Nuts collected directly from orchard trees
+
+```{r - Diet variables visualisation, echo=FALSE}
+head(macaca_diet)
+```
+
+### Assumptions
+
+blablablabla
+
+## Co-inertia
+
+Co-inertia analysis takes two multivariate datasets and (type the def coming from the course of Pannard). Co-inertia analysis is a symmetric coupling method that provides a decomposition of the co-inertia criterion on a set of orthogonal vectors. (Chessel and Mercier 1993, Dole´dec and Chessel 1994).
+
+#### 1. Data pre-treatment
+
+Must be done on the same values, we noticed a difference in raws.
+
+```{r - Checking the number of raws}
+nrow(macaca_time_budget)
+nrow(macaca_diet)
+```
+
+Some samples were done on the time budget data set but not in the diet data set. We create a key that help us only keep the comon samples between both tables.
+
+```{r - Key creation}
+# Creation of a key combining Type_site, Group, Day, Month and Group_size
+
+macaca_time_budget$id_unique <- paste(
+  macaca_time_budget$Type_site,
+  macaca_time_budget$Group,
+  macaca_time_budget$Day,
+  macaca_time_budget$Month,
+  macaca_time_budget$Group_size,
+  sep = "_"
+)
+
+macaca_diet$id_unique <- paste(
+  macaca_diet$Type_site,
+  macaca_diet$Group,
+  macaca_diet$Day,
+  macaca_diet$Month,
+  macaca_diet$Group_size,
+  sep = "_"
+)
+
+common_ids <- intersect(macaca_time_budget$id_unique, macaca_diet$id_unique)
+
+# Keeping only the common samples
+macaca_time_budget <- macaca_time_budget[macaca_time_budget$id_unique %in% common_ids, ]
+macaca_diet <- macaca_diet[macaca_diet$id_unique %in% common_ids, ]
+
+```
+
+Now we have two tables with the same number of samples.
+
+```{r}
+nrow(macaca_time_budget)
+nrow(macaca_diet)
+```
+
+#### 2. Data transformation
+
+Thanks to our decision three, we know data composition data must be transformed because we can't compute an unbiased euclidian distance (mieux développer ce point).
+
+```{r}
+
+vars1 = c("Feeding", "Moving", "Foraging", "Resting", "Social")
+vars2 = c(
+  "Tree_bush_natural",
+  "Other_fruit",
+  "Cereal",
+  "Cherry_intree" ,
+  "Cherry_onground",
+  "Mushroom" ,
+  "Herba_incrop",
+  "Herba_notincrop" ,
+  "Animal" ,
+  "Nut_intree"
+)
+
+months_tb <- macaca_time_budget$Month
+months_diet <- macaca_diet$Month
+
+# transforme les colonnes numériques 
+macaca_time_budget_asin <- as.data.frame(apply(macaca_time_budget[, vars1], 2, function(x)
+  asin(sqrt(x))))
+macaca_diet_asin <- as.data.frame(apply(macaca_diet[, vars2], 2, function(x)
+  asin(sqrt(x))))
+
+macaca_time_budget_transformation <- cbind(Month = months_tb, macaca_time_budget_asin)
+macaca_diet_transformation  <- cbind(Month = months_diet, macaca_diet_asin)
+
+```
+
+jkhgzqdfklsmkfjsdlqmkdvqm
+
+```{r - Grouping by months}
+macaca_time_budget<- macaca_time_budget_transformation %>%
+  group_by(Month) %>%
+  summarise(across(all_of(vars1), ~ mean(.x))) %>%
+  arrange(Month)
+
+macaca_diet <- macaca_diet_transformation%>%
+  group_by(Month) %>%
+  summarise(across(all_of(vars2), ~ mean(.x))) %>%
+  arrange(Month)
+
+```
+
+blablalbalblablablblablalabl
+
+```{r - Cleaning variables}
+# We take out the month column.
+macaca_time_budget <- macaca_time_budget[, -1]
+head(macaca_time_budget)
+
+macaca_diet = macaca_diet[, -1]
+head(macaca_diet)
+```
+
+#### 3. Data correlation
+
+We need to clean the data in order to take out the variables too correlated meaning they explain same things.
+
+```{r - Correlation}
+cor_tb = cor(macaca_time_budget)
+cor_diet = cor(macaca_diet)
+
+library(corrplot)
+corrplot(cor_tb, method = "color", tl.cex = 0.8)
+corrplot(cor_diet, method = "color", tl.cex = 0.8)
+
+cor_tb
+cor_diet
+
+```
+
+We identity three variable correlated over 0.8 in the diet dataset. We take out these variables.
+
+```{r}
+macaca_diet = macaca_diet[, -c(2,3,5)]
+```
+
+blablablalblablalblab
+
+Now we can perform the co-inertia.
+
+#### 4. Co-intertia ACP - ACP
+
+Explain why ACP ACP
+
+```{r}
+pca1 <- dudi.pca(macaca_time_budget, scannf = FALSE) 
+pca2 <- dudi.pca(macaca_diet, scannf = FALSE)   
+coi2 <- coinertia(pca2, pca1, scannf = FALSE, nf = 2)  
+print(coi2)
+```
+
+We found a co-inertia of 0.88. Now we check its significativity.
+
+```{r}
+rt = randtest(coi2, nrepet = 9999)
+rt
+plot(rt, main = "Monte-Carlo test (coinertia PCA/PCA)")
+```
+
+We can say that
+
+```{r}
+coi2$eig/sum(coi2$eig)*100 #Gives contribution of each axes (in%)
+```
+
+The first axis represent 63% of the co-intertia and the second one 25%. Both represent 88% of the co-inertia.
+
+Then we study inertia and absolute contributions.
+
+```{r - inertia study first step }
+# First step, we study the inertia 
+inertie <- inertia.dudi(coi2, row.inertia = TRUE, col.inertia = TRUE)
+inertie$col.abs # for diet 
+inertie$row.abs # for time budget 
+```
+
+```{r - inertia study second step}
+# We compute the threshold
+seuilTB = 100 / nrow(abscontrib_timebudget)
+seuilTB 
+
+seuilD = 100 / nrow(abscontrib_diet)
+seuilD
+```
+
+Now, we can say that for the time budget, the first axis is driven by Feeding and Resting while the second axis is driven by Foraging and Social. Concerning the diet, the first axis is driven by Three bush not in crops, herba in crop, herba not in crop, animal and nut in tree while the second axis is driven by cherry in tree and herba not in crop.
+
+```{r}
+scatter(coi2)
+```
+
+```{r}
+plot(coi2)
+```
+
+reblabalabakla
+
+```{r}
+MVA.synt(coi2)
+```
+
+blablalbalbal
+
+```{r}
+MVA.plot(coi2, "corr", space = 1)  # cercle de corrélations table 1
+MVA.plot(coi2, "corr", space = 2)  # cercle de corrélations table 2
+```
+
+blablablalblbla
+
+```{r}
+MVA.plot(coi2, space = 1)
+MVA.plot(coi2, space = 2)
+```
+
+reblaabakabakakakaaallal
+
+```{r}
+s.match(coi2$mX, coi2$mY)
+```
+
+very little arrows = not moving a lot. = very correlated. = same structure.
