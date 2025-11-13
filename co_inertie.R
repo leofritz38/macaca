@@ -107,8 +107,8 @@ vars2 = c(
 # Stockage de  Month séparément (cette étape c'est pour garder le label des mois
 # parce qu'après j'aimerai moyenner les données sur les mois)
 
-months_act <- macaca_activity_sync$Month
-months_food <- macaca_food_sync$Month
+groups_act <- macaca_activity_sync[, c("Group", "Type_site")]
+groups_food <- macaca_food_sync[, c("Group", "Type_site")]
 
 # transforme les colonnes numériques 
 macaca_activity_nums <- as.data.frame(apply(macaca_activity_sync[, vars1], 2, function(x)
@@ -117,56 +117,58 @@ macaca_food_nums     <- as.data.frame(apply(macaca_food_sync[, vars2], 2, functi
   asin(sqrt(x))))
 
 # recolle Month
-macaca_activity_arcsin <- cbind(Month = months_act, macaca_activity_nums)
-macaca_food_arcsin     <- cbind(Month = months_food, macaca_food_nums)
+macaca_activity_arcsin <- cbind(groups_act, macaca_activity_nums)
+macaca_food_arcsin     <- cbind(groups_food, macaca_food_nums)
 
 # moyenne par mois
 # Pareil j'ai fait ça parce que dans son article ils faisaient aussi une 
 # moyenne par mois. 
 
-macaca_activity_month <- macaca_activity_arcsin %>%
-  group_by(Month) %>%
+macaca_activity_group <- macaca_activity_arcsin %>%
+  group_by(Group, Type_site) %>%
   summarise(across(all_of(vars1), ~ mean(.x))) %>%
-  arrange(Month)
+  arrange(Group)
 
-macaca_food_month <- macaca_food_arcsin %>%
-  group_by(Month) %>%
+head(macaca_activity_group)
+
+macaca_food_group <- macaca_food_arcsin %>%
+  group_by(Group, Type_site) %>%
   summarise(across(all_of(vars2), ~ mean(.x))) %>%
-  arrange(Month)
+  arrange(Group)
+
+head(macaca_food_group)
 
 ## Cleaning des variables ------------------------------------------------------
 # On retire la valeur du mois parce que ça sert à rien pour la co-inertie
 
-head(macaca_activity_month)
-macaca_activity_month <- macaca_activity_month[, -1]
-head(macaca_activity_month)
+macaca_activity_group <- macaca_activity_group[, -c(1,2)]
+head(macaca_activity_group)
 
-names(macaca_food_month)
-macaca_food_month = macaca_food_month[, -1]
-head(macaca_food_month)
+names(macaca_food_group)
+macaca_food_group = macaca_food_group[,-c(1,2)]
+head(macaca_food_group)
 
 # Vérifie le résultat
-nrow(macaca_activity_month)
-nrow(macaca_food_month)
+nrow(macaca_activity_group)
+nrow(macaca_food_group)
 
 # Corrélation des varaiables ---------------------------------------------------
 
-cor_activity = cor(macaca_activity_month)
-cor_diet = cor(macaca_food_month)
+cor_activity = cor(macaca_activity_group)
+cor_diet = cor(macaca_food_group)
 
 library(corrplot)
-corrplot(cor(macaca_activity_month), method = "color", tl.cex = 0.8)
-corrplot(cor(macaca_food_month), method = "color", tl.cex = 0.8)
+corrplot(cor(macaca_activity_group), method = "color", tl.cex = 0.8)
+corrplot(cor(macaca_food_group), method = "color", tl.cex = 0.8)
 
 # Retire tout ce qui est trop corrélé ------------------------------------------
 
-macaca_food_month = macaca_food_month[, -c(2,5,9)]
-macaca_food_month = macaca_food_month[, -c(2)] # J'avais oublié de retirer les céréales
+macaca_food_group = macaca_food_group[, -c(2,3,5)]
 
 # Co-inertie entre deux ACP ----------------------------------------------------
 
-pca1 <- dudi.pca(macaca_activity_month, scannf = FALSE)   # ACP sur time budget
-pca2 <- dudi.pca(macaca_food_month, scannf = FALSE)   # ACP sur food
+pca1 <- dudi.pca(macaca_activity_group, scannf = FALSE)   # ACP sur time budget
+pca2 <- dudi.pca(macaca_food_group, scannf = FALSE)   # ACP sur food
 coi2 <- coinertia(pca2, pca1, scannf = FALSE, nf = 2)  # co-inertie
 print(coi2)
 # Interprétation :
@@ -179,6 +181,8 @@ par(mfrow = c(1, 1))
 rt = randtest(coi2, nrepet = 9999)
 rt
 plot(rt, main = "Monte-Carlo test (coinertia PCA/PCA)")
+
+inertia.dudi(coi2, col.inertia=T, row.inertia=T)
 
 
 # visualisation
