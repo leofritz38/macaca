@@ -9,7 +9,17 @@ output: html_document
 ## ASA Project : Macaca
 
 ```{r - Packages installation and importation, include=FALSE}
-install.packages("readxl")
+#Configuration de la session et chargement des packages R
+library(tinytex) # Pour la sortie pdf
+library(corrplot)# Correlation matrix calculus
+library(plot3D)# For 3D plot
+library(DHARMa)# Model diagnosis
+library(lattice)# multipanel graphics
+library(nlme)# Mixed models
+library(predictmeans)#Cook distance in mixed models
+library(emmeans)  # pour les tests post-hoc
+library(glmmTMB)
+#install.packages("readxl")
 library(readxl)
 library(ade4)
 library(vegan)
@@ -22,6 +32,7 @@ library(GGally)
 library(MASS)
 library(dplyr)
 ```
+
 
 ### Data presentation
 
@@ -114,6 +125,1167 @@ Diet composition is expressed as the **percentage of food items consumed** per c
 ```{r - Diet variables visualisation, echo=FALSE}
 head(macaca_diet)
 ```
+
+
+
+
+#GLMM part
+
+Importation des données, et transformation des variables qui était en chaîne de caractères
+
+```{r global data,echo=TRUE,include=TRUE}
+# Dataset import
+macaca_activity=read_xlsx("data_Macaca.xlsx",sheet=2)
+macaca_food=read_xlsx("data_Macaca.xlsx",sheet=3)
+# Vérification de la présence de valeurs manquantes
+colSums(is.na(macaca_activity))
+colSums(is.na(macaca_food))
+# Aucune valeur manquante
+
+
+summary(macaca_food)
+summary(macaca_activity)
+#Mise en forme du tableau pour que les pourcentages de diets ne soient pas considérés comme
+#des chaines de caractère
+# Conversion des variables du data frame macaca_food
+num_vars_food <- c("Tree_bush_natural", "Cereal", "Herba_incrop", "Herba_notincrop",
+                   "Mushroom", "Animal", "Nut_intree", "Cherry_onground",
+                   "Other_fruit", "Cherry_intree")
+
+fact_vars_food <- c("Type_site", "Group", "Month")
+
+macaca_food[num_vars_food] <- lapply(macaca_food[num_vars_food], as.numeric)
+macaca_food[fact_vars_food] <- lapply(macaca_food[fact_vars_food], as.factor)
+
+summary(macaca_food)
+
+# Conversion des variables du data frame macaca_activity
+num_vars_activity <- c("Feeding", "Group_size", "Moving", "Foraging", "Resting", "Social")
+fact_vars_activity <- c("Type_site", "Group", "Month")
+
+macaca_activity[num_vars_activity] <- lapply(macaca_activity[num_vars_activity], as.numeric)
+macaca_activity[fact_vars_activity] <- lapply(macaca_activity[fact_vars_activity], as.factor)
+
+summary(macaca_activity)
+
+```
+
+## EXPLORATION DU JEU DE DONNEES
+
+1.  Vérifier la présence des valeurs aberrantes dans $Y$ et la distribution des valeurs de $Y$
+2.  Si $X$ est une variable explicative **quantitative**, vérifier la présence de valeurs aberrantes et la distribution des valeurs de $X$  **OU/ET** Si $X$ est une variable explicative **qualitative**, analyser le nombre de modalités et le nombre d'individus par modalité
+3.  Analyser la relation potentielle entre $Y$ et les $X_{s}$
+4.  Vérifier la présence d'éventuelles interactions entre les $X_{s}$
+5.  Vérifier la présence d'une éventuelle colinéarité entre les $X_{s}$
+
+### Valeurs aberrantes dans $Y$ et distribution des valeurs de $Y$
+
+```{r datahist, include=TRUE, fig.height=5, fig.width=6}
+par(mfrow=c(2,2))
+# Liste des variables à analyser
+variables <- c("Tree_bush_natural", "Other_fruit", "Cereal", "Cherry_intree", 
+               "Cherry_onground", "Mushroom", "Herba_incrop", "Herba_notincrop", 
+               "Animal", "Nut_intree")
+
+# Boucle pour créer les graphiques
+for (var in variables) {
+  par(mfrow=c(2,2))  # 2x2 plots
+  data_vec <- macaca_food[[var]]  # extraire la colonne
+  
+  # Boxplot
+  boxplot(data_vec, col='dodgerblue3', ylab=var)
+  
+  # Cleveland plot
+  dotchart(data_vec, pch=16, col='dodgerblue3', xlab=var)
+  
+  # Histogram
+  hist(data_vec, col='dodgerblue3', xlab=var, main="")
+  
+  # Quantile-Quantile plot
+  qqnorm(data_vec, pch=16, col='dodgerblue3', xlab='')
+  qqline(data_vec, col='red')
+}
+
+```
+
+```{r datahist, include=TRUE, fig.height=5, fig.width=6}
+par(mfrow=c(2,2))
+# Liste des variables à analyser
+variables <- c("Feeding", "Moving", "Foraging", "Resting", "Social")
+
+# Boucle pour créer les graphiques
+for (var in variables) {
+  par(mfrow=c(2,2))  # 2x2 plots
+  data_vec <- macaca_activity[[var]]  # extraire la colonne
+  
+  # Boxplot
+  boxplot(data_vec, col='dodgerblue3', ylab=var)
+  
+  # Cleveland plot
+  dotchart(data_vec, pch=16, col='dodgerblue3', xlab=var)
+  
+  # Histogram
+  hist(data_vec, col='dodgerblue3', xlab=var, main="")
+  
+  # Quantile-Quantile plot
+  qqnorm(data_vec, pch=16, col='dodgerblue3', xlab='')
+  qqline(data_vec, col='red')
+}
+
+```
+
+On garde les variables Tree_bush_natural, Animal et Herba_notincroop car ils ont été consommés dans les deux types de sites (anthropisé et non anthropisé) et on garde toutes les activités
+
+### Pour chaque variable $X$ quantitative : vérifier la présence de valeurs abérrantes et la distribution de valeurs de X
+
+```{r datahist, include=TRUE, fig.height=5, fig.width=6}
+par(mfrow=c(2,2))
+# Boxplot
+boxplot(macaca_activity$Group_size,col='dodgerblue3')
+# Cleveland plot
+dotchart(macaca_activity$Group_size,pch=16,col='dodgerblue3')
+# Histogram
+hist(macaca_activity$Group_size,col='dodgerblue3')
+# Quantile-Quantile plot
+qqnorm(macaca_activity$Group_size,pch=16,col='dodgerblue3',xlab='')
+qqline(macaca_activity$Group_size,col='red')
+```
+
+```{r datahist, include=TRUE, fig.height=5, fig.width=6}
+par(mfrow=c(2,2))
+# Boxplot
+boxplot(macaca_food$Group_size,col='dodgerblue3')
+# Cleveland plot
+dotchart(macaca_food$Group_size,pch=16,col='dodgerblue3')
+# Histogram
+hist(macaca_food$Group_size,col='dodgerblue3')
+# Quantile-Quantile plot
+qqnorm(macaca_food$Group_size,pch=16,col='dodgerblue3',xlab='')
+qqline(macaca_food$Group_size,col='red')
+```
+
+Pas particulièrement de valeurs aberrantes observés ici
+
+### Pour chaque $X$ qualitative : analyser le nombre de modalités et le nombre d'individus par modalité
+
+```{r datafact, include=TRUE}
+# Factor site
+summary(macaca_activity$Type_site)
+# Factor month
+summary(macaca_activity$Month)
+
+# Factor site
+summary(macaca_food$Type_site)
+# Factor month
+summary(macaca_food$Month)
+```
+Les classes ont l'air plutôt equilibres
+
+### Analyser la relation potentielle entre Y vs Xs
+
+```{r datagraph, include=TRUE, fig.height=4, fig.width=6}
+
+# Variables comportementales
+variables <- c("Feeding", "Moving", "Foraging", "Resting", "Social")
+
+# Facteurs pour comparaison
+facteurs <- c("Month", "Type_site")
+
+for (var in variables) {
+  data_vec <- macaca_activity[[var]]
+  
+  for (facteur in facteurs) {
+    factor_vec <- macaca_activity[[facteur]]
+    
+    par(mfrow=c(1,2))
+    
+    # Scatter plot si le facteur est numérique
+    if (is.numeric(factor_vec)) {
+      plot(data_vec ~ factor_vec, pch=16, col='dodgerblue3',
+           xlab=facteur, ylab=var, main=paste(var, "vs", facteur))
+    } else { # Boxplot si facteur catégoriel
+      boxplot(data_vec ~ factor_vec, varwidth=TRUE, col='darkgrey',
+              xlab=facteur, ylab=var, main=paste(var, "vs", facteur))
+    }
+  }
+}
+
+```
+
+```{r}
+variables <- c("Feeding", "Moving", "Foraging", "Resting", "Social")
+
+for (var in variables) {
+  data_vec <- macaca_activity[[var]]
+  
+  plot(macaca_activity$Group_size, data_vec,
+       pch=16, col='dodgerblue3',
+       xlab="Group_size", ylab=var,
+       main=paste(var, "vs Group_size"))
+  
+  # Droite de régression
+  model <- lm(data_vec ~ macaca_activity$Group_size)
+  abline(model, col="red", lwd=2)
+  
+}
+
+```
+
+
+```{r datagraph, include=TRUE, fig.height=4, fig.width=6}
+
+# Variables comportementales
+variables <- c("Tree_bush_natural", "Herba_incrop", "Herba_notincrop")
+
+# Facteurs pour comparaison
+facteurs <- c("Month", "Type_site")
+
+for (var in variables) {
+  data_vec <- macaca_food[[var]]
+  
+  for (facteur in facteurs) {
+    factor_vec <- macaca_food[[facteur]]
+    
+    par(mfrow=c(1,2))
+    
+    # Scatter plot si le facteur est numérique
+    if (is.numeric(factor_vec)) {
+      plot(data_vec ~ factor_vec, pch=16, col='dodgerblue3',
+           xlab=facteur, ylab=var, main=paste(var, "vs", facteur))
+    } else { # Boxplot si facteur catégoriel
+      boxplot(data_vec ~ factor_vec, varwidth=TRUE, col='darkgrey',
+              xlab=facteur, ylab=var, main=paste(var, "vs", facteur))
+    }
+  }
+}
+
+```
+
+
+```{r}
+variables <- c("Tree_bush_natural", "Herba_incrop", "Herba_notincrop")
+
+for (var in variables) {
+  data_vec <- macaca_food[[var]]
+  
+  plot(macaca_food$Group_size, data_vec,
+       pch=16, col='dodgerblue3',
+       xlab="Group_size", ylab=var,
+       main=paste(var, "vs Group_size"))
+  
+  # Droite de régression
+  model <- lm(data_vec ~ macaca_food$Group_size)
+  abline(model, col="red", lwd=2)
+}
+
+```
+
+### Analyse des éventuelles interactions entre les $Xs$
+
+
+```{r dataInterFac, include=TRUE, fig.height=4, fig.width=7}
+
+#Factors are crossed (i.e. full crossed factorial design - of course, given the experimental design)
+
+# Interaction activity
+par(mfrow=c(1,1))
+boxplot(macaca_activity$Type_site~macaca_activity$Month*macaca_activity$Type_site, varwidth = TRUE, col='dodgerblue3', main = "")
+
+# Interaction food
+par(mfrow=c(1,1))
+boxplot(macaca_food$Type_site~macaca_food$Month*macaca_food$Type_site, varwidth = TRUE, col='dodgerblue3', main = "")
+
+```
+
+
+
+#Réalisation des modèles
+
+###FOOD
+
+Si la variable mois nous est d'intérêt puisqu'on pourrait dicerner des variations de diets selon les mois
+mais aussi selon les mois et les types de site (intéraction), les groupes n'apportent pas d'information biologique
+Il faudra ainsi tester l'effet aléatoire de la variable groupe afin de voir si la variance inter-groupe ne serait pas trop fortement porteuse d'information
+
+###Herba_notincrop
+
+### Transformation des données pour lois béta
+
+```{r}
+perturb=function(x){
+  if (x==1){return(x-10**-10)}
+  if (x==0){return(x+10**-10)}
+  if (x!=0 & x!=1){return(x)}
+}
+food_variable=colnames(macaca_food)[5:14]
+for(i in food_variable){
+  macaca_food[[i]]=sapply(macaca_food[[i]],perturb)}
+mod=glmmTMB(Herba_notincrop~Month+Type_site+Month:Type_site+(1|Group),family="beta_family",data=macaca_food)
+summary(mod)
+```
+
+
+On observe ici que le type de site semble être impactant sur la consommation de tree_bush_natural
+On peut toutefois réaliser des test bootstrap sur l'ensemble de nos variables afin d'en évaluer 
+La pertinence dans le modèle
+
+
+```{r}
+nBoot <- 1000
+lrStat <- rep(NA, nBoot)
+p_val_herbanotincrop=numeric(0)
+var_exp=c("Group","Month","Type_site","interaction")
+for (i in var_exp){
+  nBoot=1000
+  mod_alt=glmmTMB(Herba_notincrop~Month+Type_site+Month:Type_site+(1|Group),family="beta_family",data=macaca_food)
+  if (i=="Group"){mod_null=glmmTMB(Herba_notincrop~Month+Type_site+Month:Type_site,family="beta_family",data=macaca_food)}
+  if (i=="Month"){mod_null=glmmTMB(Herba_notincrop~Type_site+(1|Group),family="beta_family",data=macaca_food)}
+  if (i=="Type_site"){mod_null=glmmTMB(Herba_notincrop~Month+(1|Group),family="beta_family",data=macaca_food)}
+  if (i=="interaction"){mod_null=glmmTMB(Herba_notincrop~Month+Type_site+(1|Group),family="beta_family",data=macaca_food)}
+  lrObs <- 2 * logLik(mod_alt) - 2 * logLik(mod_null) # observed test stat
+  lrStat <- rep(NA, nBoot)
+  for (iBoot in 1:nBoot)
+  {
+    macaca_food$NTBSim <- unlist(simulate(mod_null))
+    macaca_food$NTBSim <- sapply(macaca_food$NTBSim,perturb)# resampled data
+    bAlt <-glmmTMB(NTBSim ~ Month * Type_site + (1 | Group),
+                   data = macaca_food,
+                   family = beta_family(link = "logit"))
+    # null model
+    if (i=="Group"){bNull=glmmTMB(NTBSim~Month+Type_site+Month:Type_site,family="beta_family",data=macaca_food)}
+    if (i=="Month"){bNull=glmmTMB(NTBSim~Type_site+(1|Group),family="beta_family",data=macaca_food)}
+    if (i=="Type_site"){bNull=glmmTMB(NTBSim~Month+(1|Group),family="beta_family",data=macaca_food)}
+    if (i=="interaction"){bNull=glmmTMB(NTBSim~Month+Type_site+(1|Group),family="beta_family",data=macaca_food)}
+    lrStat[iBoot] <- 2 * logLik(bAlt) - 2 * logLik(bNull) # resampled test stat
+  }
+  
+  print(lrStat)
+  
+  print(lrObs)
+  
+  mean(lrStat > lrObs) # P-value for test of the random effect
+  p_val_herbanotincrop=c(p_val_herbanotincrop,mean(lrStat > lrObs))
+  print(mean(lrStat > lrObs))
+  print(lrObs)
+  png(paste0("bootstrap",i,".png"), width=800, height=600)
+  hist(lrStat, col='dodgerblue3',main=i) # Histogram of the 1000 values of likelihood of the simulated model
+  abline(v = lrObs, col="darkred", lwd=3, lty=2) # Vertical red line representing the likelihood of the observed model including the random factor
+  dev.off() 
+}
+var_exp=c("Group","Month","Type_site","interaction")
+p_val_herbanotincrop=c("0.34","0.19",">0.001",">0.001",">0.001")
+library(performance)
+check_collinearity(mod)
+```
+
+
+Donc les variables type_site, month et leur interaction sont fortement significatif pour le modèle
+On peut maintenant discuter des coefficients du modèle
+
+```{r}
+summary(mod)
+```
+
+On observe que les valeurs pour les loglik observé du modèle sans interaction et sans interaction + type_site sont extrémement proches 81.9 pour interaction et 87.2 pour type_site
+On peut donc conclure que c'est l'interaction entre mois et type site qui rend type site significatif
+Ainsi l'anthropisation en elle même n'impact pas la diet de herbes hors des cultures mais
+on observe toutefois des tendances saisonnière marginales entre les sites
+
+
+###Tree_bush_natural
+
+### Transformation des données pour lois béta
+
+```{r}
+mod=glmmTMB(Tree_bush_natural~Month+Type_site+Month:Type_site+(1|Group),family="beta_family",data=macaca_food)
+summary(mod)
+```
+
+
+On observe ici que le type de site semble être impactant sur la consommation de tree_bush_natural
+On peut toutefois réaliser des test bootstrap sur l'ensemble de nos variables afin d'en évaluer 
+La pertinence dans le modèle
+
+
+```{r}
+nBoot <- 1000
+lrStat <- rep(NA, nBoot)
+p_val_herbanotincrop=numeric(0)
+var_exp=c("Group","Month","Type_site","interaction")
+for (i in var_exp){
+  nBoot=1000
+  mod_alt=glmmTMB(Herba_notincrop~Month+Type_site+Month:Type_site+(1|Group),family="beta_family",data=macaca_food)
+  if (i=="Group"){mod_null=glmmTMB(Herba_notincrop~Month+Type_site+Month:Type_site,family="beta_family",data=macaca_food)}
+  if (i=="Month"){mod_null=glmmTMB(Herba_notincrop~Type_site+(1|Group),family="beta_family",data=macaca_food)}
+  if (i=="Type_site"){mod_null=glmmTMB(Herba_notincrop~Month+(1|Group),family="beta_family",data=macaca_food)}
+  if (i=="interaction"){mod_null=glmmTMB(Herba_notincrop~Month+Type_site+(1|Group),family="beta_family",data=macaca_food)}
+  lrObs <- 2 * logLik(mod_alt) - 2 * logLik(mod_null) # observed test stat
+  lrStat <- rep(NA, nBoot)
+  for (iBoot in 1:nBoot)
+  {
+    macaca_food$NTBSim <- unlist(simulate(mod_null))
+    macaca_food$NTBSim <- sapply(macaca_food$NTBSim,perturb)# resampled data
+    bAlt <-glmmTMB(NTBSim ~ Month * Type_site + (1 | Group),
+                   data = macaca_food,
+                   family = beta_family(link = "logit"))
+    # null model
+    if (i=="Group"){bNull=glmmTMB(NTBSim~Month+Type_site+Month:Type_site,family="beta_family",data=macaca_food)}
+    if (i=="Month"){bNull=glmmTMB(NTBSim~Type_site+(1|Group),family="beta_family",data=macaca_food)}
+    if (i=="Type_site"){bNull=glmmTMB(NTBSim~Month+(1|Group),family="beta_family",data=macaca_food)}
+    if (i=="interaction"){bNull=glmmTMB(NTBSim~Month+Type_site+(1|Group),family="beta_family",data=macaca_food)}
+    lrStat[iBoot] <- 2 * logLik(bAlt) - 2 * logLik(bNull) # resampled test stat
+  }
+  
+  print(lrStat)
+  
+  print(lrObs)
+  
+  mean(lrStat > lrObs) # P-value for test of the random effect
+  p_val_herbanotincrop=c(p_val_herbanotincrop,mean(lrStat > lrObs))
+  print(mean(lrStat > lrObs))
+  print(lrObs)
+  png(paste0("bootstrap",i,".png"), width=800, height=600)
+  hist(lrStat, col='dodgerblue3',main=i) # Histogram of the 1000 values of likelihood of the simulated model
+  abline(v = lrObs, col="darkred", lwd=3, lty=2) # Vertical red line representing the likelihood of the observed model including the random factor
+  dev.off() 
+}
+var_exp=c("Group","Month","Type_site","interaction")
+p_val_herbanotincrop=c("0.34","0.19",">0.001",">0.001",">0.001")
+library(performance)
+check_collinearity(mod)
+```
+
+Les macaques consomment moins de Natural_tree_bush dans les sites non anthropisé
+La consommation des macaques baissent durant les mois 7 8 et 11
+Cependant la baisse de consomation est moindre durant les mois 7 à 11 pour les sites non anthropisé
+En résumé la consommation de Natural tree bush à tendance à être moindre sur les sites anthropisé mais reste plus constante au cours des saisons par rapport au site anthropisé où leur consommation varie plus au cours des saisons
+
+### Animal
+
+### Transformation des données pour lois béta
+
+```{r}
+mod=glmmTMB(Animal~Month+Type_site+Month:Type_site+(1|Group),family="beta_family",data=macaca_food)
+summary(mod)
+```
+
+```{r}
+nBoot <- 1000
+lrStat <- rep(NA, nBoot)
+p_val_animal=numeric(0)
+var_exp=c("Group","Month","Type_site","interaction")
+for (i in var_exp){
+  nBoot=1000
+  mod_alt=glmmTMB(Animal~Month+Type_site+Month:Type_site+(1|Group),family="beta_family",data=macaca_food)
+  if (i=="Group"){mod_null=glmmTMB(Animal~Month+Type_site+Month:Type_site,family="beta_family",data=macaca_food)}
+  if (i=="Month"){mod_null=glmmTMB(Animal~Type_site+(1|Group),family="beta_family",data=macaca_food)}
+  if (i=="Type_site"){mod_null=glmmTMB(Animal~Month+(1|Group),family="beta_family",data=macaca_food)}
+  if (i=="interaction"){mod_null=glmmTMB(Animal~Month+Type_site+(1|Group),family="beta_family",data=macaca_food)}
+  lrObs <- 2 * logLik(mod_alt) - 2 * logLik(mod_null) # observed test stat
+  lrStat <- rep(NA, nBoot)
+  for (iBoot in 1:nBoot)
+  {
+    macaca_food$NTBSim <- unlist(simulate(mod_null))
+    macaca_food$NTBSim <- sapply(macaca_food$NTBSim,perturb)# resampled data
+    bAlt <-glmmTMB(NTBSim ~ Month * Type_site  + (1 | Group),
+                   data = macaca_food,
+                   family = beta_family(link = "logit"))
+    # null model
+    if (i=="Group"){bNull=glmmTMB(NTBSim~Month+Type_site+Month:Type_site,family="beta_family",data=macaca_food)}
+    if (i=="Month"){bNull=glmmTMB(NTBSim~Type_site+(1|Group),family="beta_family",data=macaca_food)}
+    if (i=="Type_site"){bNull=glmmTMB(NTBSim~Month+(1|Group),family="beta_family",data=macaca_food)}
+    if (i=="interaction"){bNull=glmmTMB(NTBSim~Month+Type_site+(1|Group),family="beta_family",data=macaca_food)}
+    lrStat[iBoot] <- 2 * logLik(bAlt) - 2 * logLik(bNull) # resampled test stat
+  }
+  
+  print(lrStat)
+  
+  print(lrObs)
+  
+  mean(lrStat > lrObs) # P-value for test of the random effect
+  p_val_aniaml=c(p_val_animal,mean(lrStat > lrObs))
+  print(mean(lrStat > lrObs))
+  print(lrObs)
+  png(paste0("bootstrap_animal_",i,".png"), width=800, height=600)
+  hist(lrStat, col='dodgerblue3',main=i) # Histogram of the 1000 values of likelihood of the simulated model
+  abline(v = lrObs, col="darkred", lwd=3, lty=2) # Vertical red line representing the likelihood of the observed model including the random factor
+  dev.off() 
+}
+```
+
+On observe ici qu'aucune variable ne semble expliquer de variation dans la consommation de petit animaux,
+On peut conclure que les besoins alimentaires liés à la consomation d'animaux ne sont pas compensé par d'autres nouriture anthropisé. 
+
+
+Pour les nouritures consommées uniquement dans les sites anthropiser on peut conclure qu'elles ne sont présentes que sur ces sites
+
+
+Pour les champignons il existe deux hypothèse : soit les besoins alimentaire sont entièrement remplacé par d'autres ressources anthropisées, mais aussi que les champignons consommées par les macaques ne sont pas présent sur les sites anthropisé.
+
+
+
+
+
+#ACTIVITY
+
+```{r}
+# Préparation des données pour les modèles beta
+
+perturb = function(x){
+  if (x == 1){return(x - 10**-10)}
+  if (x == 0){return(x + 10**-10)}
+  if (x != 0 & x != 1){return(x)}
+}
+
+# Liste des variables d'intérêt
+activity_variables = c("Foraging", "Feeding", "Moving", "Resting", "Social")
+
+for (v in activity_variables){
+  macaca_activity[[v]] = sapply(macaca_activity[[v]], perturb)
+}
+```
+
+
+
+#FORAGING
+
+```{r}
+
+# Modélisation : variable Foraging
+
+
+mod_foraging = glmmTMB(
+  Foraging ~ Month + Type_site + Month:Type_site + (1 | Group),
+  family = "beta_family",
+  data = macaca_activity
+)
+summary(mod_foraging)
+
+# Bootstrap pour évaluer la pertinence des variables explicatives
+
+nBoot = 1000
+lrStat = rep(NA, nBoot)
+p_val_foraging = numeric(0)
+var_exp = c("Group", "Month", "Type_site", "interaction")
+
+for (i in var_exp){
+  
+  # Modèle alternatif complet
+  mod_alt = glmmTMB(
+    Foraging ~ Month + Type_site + Month:Type_site  + (1 | Group),
+    family = "beta_family",
+    data = macaca_activity
+  )
+  
+  # Modèle nul selon la variable testée
+  if (i == "Group"){
+    mod_null = glmmTMB(Foraging ~ Month + Type_site + Month:Type_site ,
+                       family = "beta_family", data = macaca_activity)
+  }
+
+  if (i == "Month"){
+    mod_null = glmmTMB(Foraging ~ Type_site  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  if (i == "Type_site"){
+    mod_null = glmmTMB(Foraging ~ Month  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  if (i == "interaction"){
+    mod_null = glmmTMB(Foraging ~ Month + Type_site  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  
+  # Statistique observée
+  lrObs = 2 * logLik(mod_alt) - 2 * logLik(mod_null)
+  lrStat = rep(NA, nBoot)
+  
+  # Bootstrap
+  for (iBoot in 1:nBoot){
+    macaca_activity$ForagingSim = unlist(simulate(mod_null))
+    macaca_activity$ForagingSim = sapply(macaca_activity$ForagingSim, perturb)
+    
+    # Modèles simulés
+    bAlt = glmmTMB(
+      ForagingSim ~ Month * Type_site  + (1 | Group),
+      family = beta_family(link = "logit"),
+      data = macaca_activity
+    )
+    
+    if (i == "Group"){
+      bNull = glmmTMB(ForagingSim ~ Month + Type_site + Month:Type_site ,
+                      family = "beta_family", data = macaca_activity)
+    }
+
+    if (i == "Month"){
+      bNull = glmmTMB(ForagingSim ~ Type_site  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    if (i == "Type_site"){
+      bNull = glmmTMB(ForagingSim ~ Month  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    if (i == "interaction"){
+      bNull = glmmTMB(ForagingSim ~ Month + Type_site  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    
+    # Statistique bootstrap
+    lrStat[iBoot] = 2 * logLik(bAlt) - 2 * logLik(bNull)
+  }
+  
+  # Affichage des résultats
+  print(lrStat)
+  print(lrObs)
+  print(mean(lrStat > lrObs))
+  
+  # Sauvegarde du graphique
+  png(paste0("bootstrap_foraging_", i, ".png"), width = 800, height = 600)
+  hist(lrStat, col = 'dodgerblue3', main = i)
+  abline(v = lrObs, col = "darkred", lwd = 3, lty = 2)
+  dev.off()
+  
+  # Enregistrement des p-values
+  p_val_foraging = c(p_val_foraging, mean(lrStat > lrObs))
+}
+
+# Interprétation
+
+# Résumé du modèle
+summary(mod_foraging)
+
+# Les p-values bootstrap sont stockées dans :
+print(p_val_foraging)
+
+
+```
+
+Concernant le foraging, les mois ont un impact important sur cette activite. Avec plus de foraging dans les mois 6 et 11, associé à un foraging plutôt dans les parcelles agricoles. Cependant le type de site seul, ne semble pas avoir un impact important sur le foraging, seul l'interaction avec certains mois semble modifier les comportements des macaques. 
+
+
+#FEEDING
+
+```{r}
+
+# Modélisation : variable Feeding
+
+
+mod_Feeding = glmmTMB(
+  Feeding ~ Month + Type_site + Month:Type_site  + (1 | Group),
+  family = "beta_family",
+  data = macaca_activity
+)
+summary(mod_Feeding)
+
+# Bootstrap pour évaluer la pertinence des variables explicatives
+
+nBoot = 1000
+lrStat = rep(NA, nBoot)
+p_val_Feeding = numeric(0)
+var_exp = c("Group", "Month", "Type_site", "interaction")
+
+for (i in var_exp){
+  
+  # Modèle alternatif complet
+  mod_alt = glmmTMB(
+    Feeding ~ Month + Type_site + Month:Type_site  + (1 | Group),
+    family = "beta_family",
+    data = macaca_activity
+  )
+  
+  # Modèle nul selon la variable testée
+  if (i == "Group"){
+    mod_null = glmmTMB(Feeding ~ Month + Type_site + Month:Type_site ,
+                       family = "beta_family", data = macaca_activity)
+  }
+
+  if (i == "Month"){
+    mod_null = glmmTMB(Feeding ~ Type_site  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  if (i == "Type_site"){
+    mod_null = glmmTMB(Feeding ~ Month  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  if (i == "interaction"){
+    mod_null = glmmTMB(Feeding ~ Month + Type_site  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  
+  # Statistique observée
+  lrObs = 2 * logLik(mod_alt) - 2 * logLik(mod_null)
+  lrStat = rep(NA, nBoot)
+  
+  # Bootstrap
+  for (iBoot in 1:nBoot){
+    macaca_activity$FeedingSim = unlist(simulate(mod_null))
+    macaca_activity$FeedingSim = sapply(macaca_activity$FeedingSim, perturb)
+    
+    # Modèles simulés
+    bAlt = glmmTMB(
+      FeedingSim ~ Month * Type_site  + (1 | Group),
+      family = beta_family(link = "logit"),
+      data = macaca_activity
+    )
+    
+    if (i == "Group"){
+      bNull = glmmTMB(FeedingSim ~ Month + Type_site + Month:Type_site ,
+                      family = "beta_family", data = macaca_activity)
+    }
+
+    if (i == "Month"){
+      bNull = glmmTMB(FeedingSim ~ Type_site  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    if (i == "Type_site"){
+      bNull = glmmTMB(FeedingSim ~ Month  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    if (i == "interaction"){
+      bNull = glmmTMB(FeedingSim ~ Month + Type_site  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    
+    # Statistique bootstrap
+    lrStat[iBoot] = 2 * logLik(bAlt) - 2 * logLik(bNull)
+  }
+  
+  # Affichage des résultats
+  print(lrStat)
+  print(lrObs)
+  print(mean(lrStat > lrObs))
+  
+  # Sauvegarde du graphique
+  png(paste0("bootstrap_Feeding_", i, ".png"), width = 800, height = 600)
+  hist(lrStat, col = 'dodgerblue3', main = i)
+  abline(v = lrObs, col = "darkred", lwd = 3, lty = 2)
+  dev.off()
+  
+  # Enregistrement des p-values
+  p_val_Feeding = c(p_val_Feeding, mean(lrStat > lrObs))
+}
+
+# Interprétation
+
+# Résumé du modèle
+summary(mod_Feeding)
+
+# Les p-values bootstrap sont stockées dans :
+print(p_val_Feeding)
+
+
+```
+
+Concernant le Feeding, les types de sites, ainsi que les mois, et leur interaction semble avoir un impact sur cette activité. Avec une augmentation dans les mois 7,8 et 10 du Feeding dans les sites non agricoles. 
+
+
+#MoVING
+
+```{r}
+
+# Modélisation : variable Moving
+
+
+mod_Moving = glmmTMB(
+  Moving ~ Month + Type_site + Month:Type_site  + (1 | Group),
+  family = "beta_family",
+  data = macaca_activity
+)
+summary(mod_Moving)
+
+# Bootstrap pour évaluer la pertinence des variables explicatives
+
+nBoot = 1000
+lrStat = rep(NA, nBoot)
+p_val_Moving = numeric(0)
+var_exp = c("Group", "Month", "Type_site", "interaction")
+
+for (i in var_exp){
+  
+  # Modèle alternatif complet
+  mod_alt = glmmTMB(
+    Moving ~ Month + Type_site + Month:Type_site  + (1 | Group),
+    family = "beta_family",
+    data = macaca_activity
+  )
+  
+  # Modèle nul selon la variable testée
+  if (i == "Group"){
+    mod_null = glmmTMB(Moving ~ Month + Type_site + Month:Type_site ,
+                       family = "beta_family", data = macaca_activity)
+  }
+
+  if (i == "Month"){
+    mod_null = glmmTMB(Moving ~ Type_site  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  if (i == "Type_site"){
+    mod_null = glmmTMB(Moving ~ Month  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  if (i == "interaction"){
+    mod_null = glmmTMB(Moving ~ Month + Type_site  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  
+  # Statistique observée
+  lrObs = 2 * logLik(mod_alt) - 2 * logLik(mod_null)
+  lrStat = rep(NA, nBoot)
+  
+  # Bootstrap
+  for (iBoot in 1:nBoot){
+    macaca_activity$MovingSim = unlist(simulate(mod_null))
+    macaca_activity$MovingSim = sapply(macaca_activity$MovingSim, perturb)
+    
+    # Modèles simulés
+    bAlt = glmmTMB(
+      MovingSim ~ Month * Type_site  + (1 | Group),
+      family = beta_family(link = "logit"),
+      data = macaca_activity
+    )
+    
+    if (i == "Group"){
+      bNull = glmmTMB(MovingSim ~ Month + Type_site + Month:Type_site ,
+                      family = "beta_family", data = macaca_activity)
+    }
+
+    if (i == "Month"){
+      bNull = glmmTMB(MovingSim ~ Type_site  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    if (i == "Type_site"){
+      bNull = glmmTMB(MovingSim ~ Month  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    if (i == "interaction"){
+      bNull = glmmTMB(MovingSim ~ Month + Type_site  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    
+    # Statistique bootstrap
+    lrStat[iBoot] = 2 * logLik(bAlt) - 2 * logLik(bNull)
+  }
+  
+  # Affichage des résultats
+  print(lrStat)
+  print(lrObs)
+  print(mean(lrStat > lrObs))
+  
+  # Sauvegarde du graphique
+  png(paste0("bootstrap_Moving_", i, ".png"), width = 800, height = 600)
+  hist(lrStat, col = 'dodgerblue3', main = i)
+  abline(v = lrObs, col = "darkred", lwd = 3, lty = 2)
+  dev.off()
+  
+  # Enregistrement des p-values
+  p_val_Moving = c(p_val_Moving, mean(lrStat > lrObs))
+}
+
+# Interprétation
+
+# Résumé du modèle
+summary(mod_Moving)
+
+# Les p-values bootstrap sont stockées dans :
+print(p_val_Moving)
+
+
+```
+
+L'activite de moving, ne semble pas impacter par le type de site, ou par des mois en particulier. Cependant la variable mois de manière globale semble impacté le déplacement. Avec des deplacements probablement (mais pas significativement) different pour les mois 6 et 11. 
+
+
+#Resting
+
+```{r}
+
+# Modélisation : variable Resting
+
+
+mod_Resting = glmmTMB(
+  Resting ~ Month + Type_site + Month:Type_site  + (1 | Group),
+  family = "beta_family",
+  data = macaca_activity
+)
+summary(mod_Resting)
+
+# Bootstrap pour évaluer la pertinence des variables explicatives
+
+nBoot = 1000
+lrStat = rep(NA, nBoot)
+p_val_Resting = numeric(0)
+var_exp = c("Group", "Month", "Type_site", "interaction")
+
+for (i in var_exp){
+  
+  # Modèle alternatif complet
+  mod_alt = glmmTMB(
+    Resting ~ Month + Type_site + Month:Type_site  + (1 | Group),
+    family = "beta_family",
+    data = macaca_activity
+  )
+  
+  # Modèle nul selon la variable testée
+  if (i == "Group"){
+    mod_null = glmmTMB(Resting ~ Month + Type_site + Month:Type_site ,
+                       family = "beta_family", data = macaca_activity)
+  }
+
+  if (i == "Month"){
+    mod_null = glmmTMB(Resting ~ Type_site  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  if (i == "Type_site"){
+    mod_null = glmmTMB(Resting ~ Month  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  if (i == "interaction"){
+    mod_null = glmmTMB(Resting ~ Month + Type_site  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  
+  # Statistique observée
+  lrObs = 2 * logLik(mod_alt) - 2 * logLik(mod_null)
+  lrStat = rep(NA, nBoot)
+  
+  # Bootstrap
+  for (iBoot in 1:nBoot){
+    macaca_activity$RestingSim = unlist(simulate(mod_null))
+    macaca_activity$RestingSim = sapply(macaca_activity$RestingSim, perturb)
+    
+    # Modèles simulés
+    bAlt = glmmTMB(
+      RestingSim ~ Month * Type_site  + (1 | Group),
+      family = beta_family(link = "logit"),
+      data = macaca_activity
+    )
+    
+    if (i == "Group"){
+      bNull = glmmTMB(RestingSim ~ Month + Type_site + Month:Type_site ,
+                      family = "beta_family", data = macaca_activity)
+    }
+
+    if (i == "Month"){
+      bNull = glmmTMB(RestingSim ~ Type_site  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    if (i == "Type_site"){
+      bNull = glmmTMB(RestingSim ~ Month  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    if (i == "interaction"){
+      bNull = glmmTMB(RestingSim ~ Month + Type_site  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    
+    # Statistique bootstrap
+    lrStat[iBoot] = 2 * logLik(bAlt) - 2 * logLik(bNull)
+  }
+  
+  # Affichage des résultats
+  print(lrStat)
+  print(lrObs)
+  print(mean(lrStat > lrObs))
+  
+  # Sauvegarde du graphique
+  png(paste0("bootstrap_Resting_", i, ".png"), width = 800, height = 600)
+  hist(lrStat, col = 'dodgerblue3', main = i)
+  abline(v = lrObs, col = "darkred", lwd = 3, lty = 2)
+  dev.off()
+  
+  # Enregistrement des p-values
+  p_val_Resting = c(p_val_Resting, mean(lrStat > lrObs))
+}
+
+# Interprétation
+
+# Résumé du modèle
+summary(mod_Resting)
+
+# Les p-values bootstrap sont stockées dans :
+print(p_val_Resting)
+
+
+```
+
+
+Concernant l'activité de Resting, celle-ci semble impacté par les mois ainsi que par les types de sites. Avec une probable augmentation du resting lorsque les mois de l'année avance (lorsque on est plutôt en fin d'année, par rapport à juin).
+
+
+#SOCIAL
+
+```{r}
+# Modélisation : variable Social
+
+
+mod_Social = glmmTMB(
+  Social ~ Month + Type_site + Month:Type_site  + (1 | Group),
+  family = "beta_family",
+  data = macaca_activity
+)
+summary(mod_Social)
+
+# Bootstrap pour évaluer la pertinence des variables explicatives
+
+nBoot = 1000
+lrStat = rep(NA, nBoot)
+p_val_Social = numeric(0)
+var_exp = c("Group",  "Month", "Type_site", "interaction")
+
+for (i in var_exp){
+  
+  # Modèle alternatif complet
+  mod_alt = glmmTMB(
+    Social ~ Month + Type_site + Month:Type_site  + (1 | Group),
+    family = "beta_family",
+    data = macaca_activity
+  )
+  
+  # Modèle nul selon la variable testée
+  if (i == "Group"){
+    mod_null = glmmTMB(Social ~ Month + Type_site + Month:Type_site ,
+                       family = "beta_family", data = macaca_activity)
+  }
+
+  if (i == "Month"){
+    mod_null = glmmTMB(Social ~ Type_site  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  if (i == "Type_site"){
+    mod_null = glmmTMB(Social ~ Month  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  if (i == "interaction"){
+    mod_null = glmmTMB(Social ~ Month + Type_site  + (1 | Group),
+                       family = "beta_family", data = macaca_activity)
+  }
+  
+  # Statistique observée
+  lrObs = 2 * logLik(mod_alt) - 2 * logLik(mod_null)
+  lrStat = rep(NA, nBoot)
+  
+  # Bootstrap
+  for (iBoot in 1:nBoot){
+    macaca_activity$SocialSim = unlist(simulate(mod_null))
+    macaca_activity$SocialSim = sapply(macaca_activity$SocialSim, perturb)
+    
+    # Modèles simulés
+    bAlt = glmmTMB(
+      SocialSim ~ Month * Type_site  + (1 | Group),
+      family = beta_family(link = "logit"),
+      data = macaca_activity
+    )
+    
+    if (i == "Group"){
+      bNull = glmmTMB(SocialSim ~ Month + Type_site + Month:Type_site ,
+                      family = "beta_family", data = macaca_activity)
+    }
+
+    if (i == "Month"){
+      bNull = glmmTMB(SocialSim ~ Type_site  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    if (i == "Type_site"){
+      bNull = glmmTMB(SocialSim ~ Month  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    if (i == "interaction"){
+      bNull = glmmTMB(SocialSim ~ Month + Type_site  + (1 | Group),
+                      family = "beta_family", data = macaca_activity)
+    }
+    
+    # Statistique bootstrap
+    lrStat[iBoot] = 2 * logLik(bAlt) - 2 * logLik(bNull)
+  }
+  
+  # Affichage des résultats
+  print(lrStat)
+  print(lrObs)
+  print(mean(lrStat > lrObs))
+  
+  # Sauvegarde du graphique
+  png(paste0("bootstrap_Social_", i, ".png"), width = 800, height = 600)
+  hist(lrStat, col = 'dodgerblue3', main = i)
+  abline(v = lrObs, col = "darkred", lwd = 3, lty = 2)
+  dev.off()
+  
+  # Enregistrement des p-values
+  p_val_Social = c(p_val_Social, mean(lrStat > lrObs))
+}
+
+# Interprétation
+
+# Résumé du modèle
+summary(mod_Social)
+
+# Les p-values bootstrap sont stockées dans :
+print(p_val_Social)
+
+
+```
+
+
+
+Concernant l'activité Social, celle-ci ne semble pas impacter par le type de site, ou par des mois en particulier. Cependant la variable mois de manière globale semble impacté l'activité social. Avec une baisse probable (mais pas significativement) de cette activité au cours de l'année. 
+
+
+
+
+# Validation des modèles
+
+Un dharma a été réalisé pour la validation des modèles. Cependant 4 de nos modèles sur 8, ne semblent pas être validés. Les trois modèles de nourriture ainsi que le modèle de Foraging. Les résultats pour ces modèles sont donc à considérer dans ce sens. La possible cause est que ces variables comportentbeaucoup d'observations nulles, ce qui est probablement la cause de ce problème. Il faudrait essayer de trouver des solutions d'améliorations pour ces modèles (transformation des données, modification de la loi...)
+
+
+```{r}
+library(DHARMa)
+
+validate_model <- function(model, response_name, type_label = "modèle") {
+  
+  cat("\n====================\n")
+  cat("Validation DHARMa du", type_label, ":", response_name, "\n\n")
+  
+  # Simulation des résidus DHARMa
+  sim <- simulateResiduals(model)
+  
+  # Plots DHARMa
+  plot(sim, main = paste("DHARMa -", response_name))
+
+}
+
+variables_activity <- c("Feeding", "Moving", "Foraging", "Resting", "Social")
+results_list_activity <- list()
+
+for (var in variables_activity) {
+  formula_full <- as.formula(paste(var, "~ Month * Type_site  + (1 | Group)"))
+  mod_full <- glmmTMB(formula_full, family = beta_family(), data = macaca_activity)
+  results_list_activity[[var]] <- list(model_full = mod_full)
+}
+
+for (act in names(results_list_activity)) {
+  validate_model(results_list_activity[[act]]$model_full, act, "activité")
+}
+
+variables_food <- c("Tree_bush_natural", "Animal", "Herba_notincrop")
+results_list_food <- list()
+
+for (var in variables_food) {
+  formula_full <- as.formula(paste(var, "~ Month * Type_site  + (1 | Group)"))
+  mod_full <- glmmTMB(formula_full, family = beta_family(), data = macaca_food)
+  results_list_food[[var]] <- list(model_full = mod_full)
+}
+
+for (food in names(results_list_food)) {
+  validate_model(results_list_food[[food]]$model_full, food, "catégorie alimentaire")
+}
+
+
+```
+
+
+
+#Co-inertia part
+
+
 
 ### Assumptions
 
